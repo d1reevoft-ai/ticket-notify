@@ -63,11 +63,23 @@ config.closingPhrase = config.closingPhrase || "остались вопросы"
 config.forumMode = config.forumMode ?? false;
 config.pollingIntervalSec = config.pollingIntervalSec || 3;
 
+// ── Users (multi-user support) ────────────────────────────────
+
+if (!config.users || !Array.isArray(config.users) || config.users.length === 0) {
+    config.users = [{
+        name: 'Default',
+        discordToken: config.discordToken || '',
+        tgChatId: String(config.tgChatId || ''),
+    }];
+}
+const users = config.users.map(u => ({ ...u, tgChatId: String(u.tgChatId) }));
+const allTgChatIds = new Set(users.map(u => u.tgChatId));
+
 // ── Constants ─────────────────────────────────────────────────
 
 const LOG = '[TicketBot]';
 const GATEWAY_URL = 'wss://gateway.discord.gg/?v=9&encoding=json';
-const DISCORD_TOKEN = config.discordBotToken || config.discordToken || '';
+const GATEWAY_TOKEN = config.discordBotToken || users[0]?.discordToken || '';
 const IS_BOT_TOKEN = !!config.discordBotToken;
 const TELEGRAM_API = `https://api.telegram.org/bot${config.tgToken}`;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
@@ -118,49 +130,101 @@ let channelsFetched = false;
 let guildCreateHandled = false;  // prevent double onGuildCreate
 const notifiedTicketIds = new Set();  // dedup ticket notifications
 let botPaused = false;  // pause notifications
-const tgMsgToChannel = new Map();  // tg_message_id → discord_channel_id
+const tgMsgToChannel = new Map();  // tg_message_id → { channelId, chatId }
 let selfUserId = null;              // Discord user ID (set on READY)
 
-// ── Ticket Chat State ─────────────────────────────────────────
-const TICKET_CHAT_STATE_FILE = path.join(DATA_DIR, 'ticket_chat_state.json');
-let ticketChatState = {
-    activeTicketId: null,       // selected Discord channel ID
-    activeTicketName: null,     // selected channel name
-    listPage: 0,                // pagination page
-};
+// ── Per-User State ────────────────────────────────────────────
+const PER_USER_STATE_FILE = path.join(DATA_DIR, 'per_user_state.json');
+const perUserState = new Map(); // tgChatId → { ticketChat: {...}, shift: {...} }
 const sentByBot = new Set();  // Discord message IDs sent by us (loop protection)
 const TICKETS_PER_PAGE = 6;
-
-function loadTicketChatState() {
-    try {
-        if (!fs.existsSync(TICKET_CHAT_STATE_FILE)) return;
-        const parsed = JSON.parse(fs.readFileSync(TICKET_CHAT_STATE_FILE, 'utf8'));
-        ticketChatState.activeTicketId = parsed.activeTicketId || null;
-        ticketChatState.activeTicketName = parsed.activeTicketName || null;
-        ticketChatState.listPage = parsed.listPage || 0;
-        console.log(`${LOG} 💬 Ticket chat state loaded: ${ticketChatState.activeTicketName || 'none'}`);
-    } catch (e) {
-        console.error(`${LOG} Ошибка загрузки ticket_chat_state:`, e.message);
-    }
-}
-
-function saveTicketChatState() {
-    try {
-        fs.writeFileSync(TICKET_CHAT_STATE_FILE, JSON.stringify(ticketChatState, null, 2), 'utf8');
-    } catch (e) {
-        console.error(`${LOG} Ошибка сохранения ticket_chat_state:`, e.message);
-    }
-}
-
-// Shift state
-let shiftState = {
-    lastShiftMessageId: null,   // Discord message ID of last /smena
-    lastShiftDate: null,        // 'YYYY-MM-DD' in Europe/Kyiv
-    lastShiftClosed: false,     // whether /smenoff was used
-    reminderSentDate: null,     // 'YYYY-MM-DD' — reminder already sent/skipped today
-    lastShiftContent: null,     // original Discord message content
-};
 let shiftReminderTimer = null;
+
+function getUserByChatId(chatId) {
+    return users.find(u => u.tgChatId === String(chatId));
+}
+
+function getDiscordToken(chatId) {
+    const user = getUserByChatId(chatId);
+    return user?.discordToken || GATEWAY_TOKEN;
+}
+
+function getUserState(chatId) {
+    const key = String(chatId);
+    if (!perUserState.has(key)) {
+        perUserState.set(key, {
+            ticketChat: { activeTicketId: null, activeTicketName: null, listPage: 0 },
+            shift: { lastShiftMessageId: null, lastShiftDate: null, lastShiftClosed: false, reminderSentDate: null, lastShiftContent: null },
+        });
+    }
+    return perUserState.get(key);
+}
+
+function getUserName(chatId) {
+    const user = getUserByChatId(chatId);
+    return user?.name || 'Unknown';
+}
+
+function loadPerUserState() {
+    try {
+        if (!fs.existsSync(PER_USER_STATE_FILE)) {
+            // Migrate from old single-user files
+            migrateOldState();
+            return;
+        }
+        const parsed = JSON.parse(fs.readFileSync(PER_USER_STATE_FILE, 'utf8'));
+        for (const [chatId, state] of Object.entries(parsed)) {
+            perUserState.set(String(chatId), {
+                ticketChat: state.ticketChat || { activeTicketId: null, activeTicketName: null, listPage: 0 },
+                shift: state.shift || { lastShiftMessageId: null, lastShiftDate: null, lastShiftClosed: false, reminderSentDate: null, lastShiftContent: null },
+            });
+        }
+        console.log(`${LOG} 👥 Per-user state loaded for ${perUserState.size} users.`);
+    } catch (e) {
+        console.error(`${LOG} Ошибка загрузки per_user_state:`, e.message);
+    }
+}
+
+function migrateOldState() {
+    // Migrate from old single-user ticket_chat_state.json and shift_state.json
+    const oldTcFile = path.join(DATA_DIR, 'ticket_chat_state.json');
+    const oldShiftFile = path.join(DATA_DIR, 'shift_state.json');
+    const firstChatId = users[0]?.tgChatId;
+    if (!firstChatId) return;
+    const state = getUserState(firstChatId);
+    try {
+        if (fs.existsSync(oldTcFile)) {
+            const parsed = JSON.parse(fs.readFileSync(oldTcFile, 'utf8'));
+            state.ticketChat.activeTicketId = parsed.activeTicketId || null;
+            state.ticketChat.activeTicketName = parsed.activeTicketName || null;
+            state.ticketChat.listPage = parsed.listPage || 0;
+            console.log(`${LOG} 📦 Migrated old ticket_chat_state for ${firstChatId}`);
+        }
+    } catch {}
+    try {
+        if (fs.existsSync(oldShiftFile)) {
+            const parsed = JSON.parse(fs.readFileSync(oldShiftFile, 'utf8'));
+            state.shift = {
+                lastShiftMessageId: parsed.lastShiftMessageId || null,
+                lastShiftDate: parsed.lastShiftDate || null,
+                lastShiftClosed: parsed.lastShiftClosed || false,
+                reminderSentDate: parsed.reminderSentDate || null,
+                lastShiftContent: parsed.lastShiftContent || null,
+            };
+            console.log(`${LOG} 📦 Migrated old shift_state for ${firstChatId}`);
+        }
+    } catch {}
+    savePerUserState();
+}
+
+function savePerUserState() {
+    try {
+        const obj = Object.fromEntries(perUserState.entries());
+        fs.writeFileSync(PER_USER_STATE_FILE, JSON.stringify(obj, null, 2), 'utf8');
+    } catch (e) {
+        console.error(`${LOG} Ошибка сохранения per_user_state:`, e.message);
+    }
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -356,8 +420,8 @@ function httpGet(url, headers = {}) {
 
 // ── Telegram API ──────────────────────────────────────────────
 
-async function tgSendMessage(text, replyMarkup, threadId) {
-    const payload = { chat_id: config.tgChatId, text, parse_mode: 'HTML', disable_web_page_preview: true };
+async function tgSendMessage(chatId, text, replyMarkup, threadId) {
+    const payload = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true };
     if (replyMarkup) payload.reply_markup = replyMarkup;
     if (threadId) payload.message_thread_id = threadId;
     try {
@@ -380,7 +444,7 @@ async function tgSendMessage(text, replyMarkup, threadId) {
 
 async function tgCreateForumTopic(name) {
     try {
-        const res = await httpPost(`${TELEGRAM_API}/createForumTopic`, { chat_id: config.tgChatId, name });
+        const res = await httpPost(`${TELEGRAM_API}/createForumTopic`, { chat_id: users[0]?.tgChatId, name });
         if (res.ok) {
             const data = JSON.parse(res.body);
             if (data.ok && data.result) return data.result.message_thread_id;
@@ -391,7 +455,7 @@ async function tgCreateForumTopic(name) {
 
 async function tgCloseForumTopic(threadId) {
     try {
-        await httpPost(`${TELEGRAM_API}/closeForumTopic`, { chat_id: config.tgChatId, message_thread_id: threadId });
+        await httpPost(`${TELEGRAM_API}/closeForumTopic`, { chat_id: users[0]?.tgChatId, message_thread_id: threadId });
     } catch {}
 }
 
@@ -412,6 +476,18 @@ function enqueue(item) {
     if (!queueRunning) runQueue();
 }
 
+function enqueueToAll(item) {
+    for (const user of users) {
+        sendQueue.push({ retries: 0, ...item, chatId: user.tgChatId });
+    }
+    if (!queueRunning) runQueue();
+}
+
+function enqueueToUser(chatId, item) {
+    sendQueue.push({ retries: 0, ...item, chatId: String(chatId) });
+    if (!queueRunning) runQueue();
+}
+
 async function runQueue() {
     if (queueRunning) return;
     queueRunning = true;
@@ -420,18 +496,18 @@ async function runQueue() {
         const wait = config.rateLimitMs - (Date.now() - lastSendTime);
         if (wait > 0) await sleep(wait);
         lastSendTime = Date.now();
-        const result = await tgSendMessage(item.text, item.replyMarkup, item.threadId);
+        const result = await tgSendMessage(item.chatId || users[0]?.tgChatId, item.text, item.replyMarkup, item.threadId);
         if (result.ok) {
             sendQueue.shift();
             ps.totalMessagesSent++;
             markDirty();
             // Track tg message → discord channel for reply feature
             if (result.messageId && item.channelId) {
-                tgMsgToChannel.set(result.messageId, item.channelId);
+                tgMsgToChannel.set(result.messageId, { channelId: item.channelId, chatId: item.chatId });
                 // Keep map small
-                if (tgMsgToChannel.size > 200) {
+                if (tgMsgToChannel.size > 400) {
                     const keys = [...tgMsgToChannel.keys()];
-                    for (let i = 0; i < keys.length - 100; i++) tgMsgToChannel.delete(keys[i]);
+                    for (let i = 0; i < keys.length - 200; i++) tgMsgToChannel.delete(keys[i]);
                 }
             }
         } else {
@@ -450,7 +526,7 @@ async function runQueue() {
 
 // ── Discord REST: Send Message ────────────────────────────────
 
-async function sendDiscordMessage(channelId, content) {
+async function sendDiscordMessage(channelId, content, token) {
     const url = `https://discord.com/api/v9/channels/${channelId}/messages`;
     const body = JSON.stringify({ content });
     return new Promise((resolve, reject) => {
@@ -462,7 +538,7 @@ async function sendDiscordMessage(channelId, content) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(body),
-                'Authorization': DISCORD_TOKEN,
+                'Authorization': token || GATEWAY_TOKEN,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
         }, res => {
@@ -478,7 +554,7 @@ async function sendDiscordMessage(channelId, content) {
     });
 }
 
-async function editDiscordMessage(channelId, messageId, content) {
+async function editDiscordMessage(channelId, messageId, content, token) {
     const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`;
     const body = JSON.stringify({ content });
     return new Promise((resolve, reject) => {
@@ -490,7 +566,7 @@ async function editDiscordMessage(channelId, messageId, content) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(body),
-                'Authorization': DISCORD_TOKEN,
+                'Authorization': token || GATEWAY_TOKEN,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
         }, res => {
@@ -506,7 +582,7 @@ async function editDiscordMessage(channelId, messageId, content) {
     });
 }
 
-async function handleMsgCommand(argsStr) {
+async function handleMsgCommand(argsStr, token) {
     const match = argsStr.trim().match(/^(\d+)\s+(.+)$/s);
     if (!match) {
         return '❌ Формат: /msg <номер> <текст>\n\nНомер тикета из /list';
@@ -519,7 +595,7 @@ async function handleMsgCommand(argsStr) {
     }
     const record = tickets[num - 1];
     try {
-        const res = await sendDiscordMessage(record.channelId, text);
+        const res = await sendDiscordMessage(record.channelId, text, token);
         if (res.ok) {
             console.log(`${LOG} ✉️ Отправлено в #${record.channelName}: ${text.slice(0, 60)}`);
             return `✅ Отправлено в <code>#${escapeHtml(record.channelName)}</code>:\n\n<blockquote>${escapeHtml(truncate(text, 200))}</blockquote>`;
@@ -533,15 +609,16 @@ async function handleMsgCommand(argsStr) {
     }
 }
 
-async function handleReplyToTicket(replyToMsgId, text) {
-    const channelId = tgMsgToChannel.get(replyToMsgId);
+async function handleReplyToTicket(replyToMsgId, text, token) {
+    const mapping = tgMsgToChannel.get(replyToMsgId);
+    const channelId = mapping?.channelId || mapping; // backward compat
     if (!channelId) {
         return '❌ Не удалось определить тикет. Используй /msg <номер> <текст>';
     }
     const record = activeTickets.get(channelId);
     const channelName = record?.channelName || channelId;
     try {
-        const res = await sendDiscordMessage(channelId, text);
+        const res = await sendDiscordMessage(channelId, text, token);
         if (res.ok) {
             console.log(`${LOG} ✉️ Reply → #${channelName}: ${text.slice(0, 60)}`);
             return `✅ Отправлено в <code>#${escapeHtml(channelName)}</code>:\n\n<blockquote>${escapeHtml(truncate(text, 200))}</blockquote>`;
@@ -559,8 +636,9 @@ function getTicketList() {
     return [...activeTickets.values()].sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
 }
 
-function buildTicketListMessage(page) {
+function buildTicketListMessage(page, chatId) {
     const tickets = getTicketList();
+    const uState = getUserState(chatId).ticketChat;
     if (tickets.length === 0) {
         return {
             text: [
@@ -576,7 +654,7 @@ function buildTicketListMessage(page) {
     const totalPages = Math.ceil(tickets.length / TICKETS_PER_PAGE);
     if (page >= totalPages) page = totalPages - 1;
     if (page < 0) page = 0;
-    ticketChatState.listPage = page;
+    uState.listPage = page;
 
     const start = page * TICKETS_PER_PAGE;
     const pageTickets = tickets.slice(start, start + TICKETS_PER_PAGE);
@@ -588,8 +666,8 @@ function buildTicketListMessage(page) {
         ``,
     ];
 
-    if (ticketChatState.activeTicketId) {
-        lines.push(`✅ Активный: <code>#${escapeHtml(ticketChatState.activeTicketName || '?')}</code>`);
+    if (uState.activeTicketId) {
+        lines.push(`✅ Активный: <code>#${escapeHtml(uState.activeTicketName || '?')}</code>`);
         lines.push(``);
     }
 
@@ -598,7 +676,7 @@ function buildTicketListMessage(page) {
         const num = start + i + 1;
         const age = formatDuration(Date.now() - t.createdAt);
         const lastMsg = t.lastMessage ? truncate(t.lastMessage, 40) : 'нет сообщений';
-        const isActive = t.channelId === ticketChatState.activeTicketId;
+        const isActive = t.channelId === uState.activeTicketId;
         lines.push(`${isActive ? '▶️' : '📩'} <b>${num}.</b> <code>#${escapeHtml(t.channelName)}</code>`);
         lines.push(`    ⏱ ${age} │ 💬 <i>${escapeHtml(lastMsg)}</i>`);
     }
@@ -615,7 +693,7 @@ function buildTicketListMessage(page) {
             const t = pageTickets[j];
             const num = start + j + 1;
             const shortName = t.channelName.length > 20 ? t.channelName.slice(0, 18) + '..' : t.channelName;
-            const isActive = t.channelId === ticketChatState.activeTicketId;
+            const isActive = t.channelId === uState.activeTicketId;
             row.push({
                 text: `${isActive ? '✅' : '📩'} ${num}. ${shortName}`,
                 callback_data: `tsel_${t.channelId}`,
@@ -632,7 +710,7 @@ function buildTicketListMessage(page) {
     buttons.push(navRow);
 
     // Unselect button
-    if (ticketChatState.activeTicketId) {
+    if (uState.activeTicketId) {
         buttons.push([{ text: '❌ Снять выбор', callback_data: 'tunselect' }]);
     }
 
@@ -642,18 +720,19 @@ function buildTicketListMessage(page) {
     };
 }
 
-function buildActiveTicketMessage() {
-    if (!ticketChatState.activeTicketId) {
+function buildActiveTicketMessage(chatId) {
+    const uState = getUserState(chatId).ticketChat;
+    if (!uState.activeTicketId) {
         return {
             text: '📭 Тикет не выбран. Нажми /list и выбери тикет.',
             markup: { inline_keyboard: [[{ text: '📋 Открыть список', callback_data: 'tpage_0' }]] },
         };
     }
-    const record = activeTickets.get(ticketChatState.activeTicketId);
-    const name = ticketChatState.activeTicketName || '?';
+    const record = activeTickets.get(uState.activeTicketId);
+    const name = uState.activeTicketName || '?';
     const age = record ? formatDuration(Date.now() - record.createdAt) : '?';
     const lastMsg = record?.lastMessage ? escapeHtml(truncate(record.lastMessage, 80)) : '<i>нет сообщений</i>';
-    const link = channelLink(config.guildId, ticketChatState.activeTicketId);
+    const link = channelLink(config.guildId, uState.activeTicketId);
 
     return {
         text: [
@@ -677,45 +756,49 @@ function buildActiveTicketMessage() {
     };
 }
 
-async function handleSelectTicket(channelId, cbqId, messageId) {
+async function handleSelectTicket(channelId, cbqId, messageId, chatId) {
     const record = activeTickets.get(channelId);
     if (!record) {
         await tgAnswerCallbackQuery(cbqId, '❌ Тикет не найден');
         return;
     }
-    ticketChatState.activeTicketId = channelId;
-    ticketChatState.activeTicketName = record.channelName;
-    saveTicketChatState();
+    const uState = getUserState(chatId).ticketChat;
+    uState.activeTicketId = channelId;
+    uState.activeTicketName = record.channelName;
+    savePerUserState();
 
     await tgAnswerCallbackQuery(cbqId, `✅ ${record.channelName}`);
 
-    const msg = buildActiveTicketMessage();
-    await tgEditMessageText(config.tgChatId, messageId, msg.text, msg.markup);
+    const msg = buildActiveTicketMessage(chatId);
+    await tgEditMessageText(chatId, messageId, msg.text, msg.markup);
 }
 
-async function handleUnselectTicket(cbqId, messageId) {
-    ticketChatState.activeTicketId = null;
-    ticketChatState.activeTicketName = null;
-    saveTicketChatState();
+async function handleUnselectTicket(cbqId, messageId, chatId) {
+    const uState = getUserState(chatId).ticketChat;
+    uState.activeTicketId = null;
+    uState.activeTicketName = null;
+    savePerUserState();
 
     await tgAnswerCallbackQuery(cbqId, '❌ Тикет сброшен');
 
     if (messageId) {
-        const msg = buildTicketListMessage(ticketChatState.listPage);
-        await tgEditMessageText(config.tgChatId, messageId, msg.text, msg.markup);
+        const msg = buildTicketListMessage(uState.listPage, chatId);
+        await tgEditMessageText(chatId, messageId, msg.text, msg.markup);
     }
 }
 
-async function handleSendToTicket(text) {
-    if (!ticketChatState.activeTicketId) {
+async function handleSendToTicket(text, chatId) {
+    const uState = getUserState(chatId).ticketChat;
+    const token = getDiscordToken(chatId);
+    if (!uState.activeTicketId) {
         return {
             text: '📭 Тикет не выбран. Нажми /list и выбери тикет.',
             markup: { inline_keyboard: [[{ text: '📋 Открыть список', callback_data: 'tpage_0' }]] },
         };
     }
-    const channelId = ticketChatState.activeTicketId;
+    const channelId = uState.activeTicketId;
     const record = activeTickets.get(channelId);
-    const channelName = record?.channelName || ticketChatState.activeTicketName || channelId;
+    const channelName = record?.channelName || uState.activeTicketName || channelId;
 
     if (!text.trim()) {
         return { text: '❌ Нельзя отправить пустое сообщение.\n\n<code>/s текст</code>', markup: null };
@@ -740,7 +823,7 @@ async function handleSendToTicket(text) {
     try {
         for (const part of parts) {
             const content = part;
-            const res = await sendDiscordMessage(channelId, content);
+            const res = await sendDiscordMessage(channelId, content, token);
             if (!res.ok) {
                 return { text: `❌ Ошибка Discord (${res.status})`, markup: null };
             }
@@ -796,11 +879,11 @@ function buildForwardedMessage(channelName, author, member, content, attachments
     return lines.join('\n');
 }
 
-async function handleTestSend(text) {
+async function handleTestSend(text, token) {
     const testChannelId = '1395858921939406929';
     const content = text || 'Тестовое сообщение от бота 🤖';
     try {
-        const res = await sendDiscordMessage(testChannelId, content);
+        const res = await sendDiscordMessage(testChannelId, content, token);
         if (res.ok) {
             console.log(`${LOG} ✉️ Тест отправлен: ${content.slice(0, 60)}`);
             return `✅ Тестовое сообщение отправлено!\n\n<blockquote>${escapeHtml(truncate(content, 200))}</blockquote>`;
@@ -832,41 +915,27 @@ function formatKyivDate() {
 }
 
 function loadShiftState() {
-    try {
-        if (fs.existsSync(SHIFT_STATE_FILE)) {
-            const raw = fs.readFileSync(SHIFT_STATE_FILE, 'utf8');
-            const parsed = JSON.parse(raw);
-            shiftState = {
-                lastShiftMessageId: parsed.lastShiftMessageId || null,
-                lastShiftDate: parsed.lastShiftDate || null,
-                lastShiftClosed: parsed.lastShiftClosed || false,
-                reminderSentDate: parsed.reminderSentDate || null,
-                lastShiftContent: parsed.lastShiftContent || null,
-            };
-            console.log(`${LOG} 📋 Shift state loaded: date=${shiftState.lastShiftDate}, msgId=${shiftState.lastShiftMessageId}`);
-        }
-    } catch (e) {
-        console.error(`${LOG} Ошибка загрузки shift state:`, e.message);
-    }
+    // Shift state is now per-user inside perUserState — loaded via loadPerUserState()
+    console.log(`${LOG} 📋 Shift state: per-user (loaded via per_user_state.json)`);
 }
 
 function saveShiftState() {
-    try {
-        fs.writeFileSync(SHIFT_STATE_FILE, JSON.stringify(shiftState, null, 2), 'utf8');
-    } catch (e) {
-        console.error(`${LOG} Ошибка сохранения shift state:`, e.message);
-    }
+    // Shift state is now per-user — saved via savePerUserState()
+    savePerUserState();
 }
 
-async function handleSmena() {
+async function handleSmena(chatId) {
     const today = getKyivDate();
+    const shiftState = getUserState(chatId).shift;
+    const token = getDiscordToken(chatId);
     if (shiftState.lastShiftDate === today) {
         return '⚠️ Сегодня уже отмечено на смену.';
     }
     const dateStr = formatKyivDate();
+    const userName = getUserName(chatId);
     const content = `Начал\n1. ${dateStr}\n2. 12-0`;
     try {
-        const res = await sendDiscordMessage(SHIFT_CHANNEL_ID, content);
+        const res = await sendDiscordMessage(SHIFT_CHANNEL_ID, content, token);
         if (!res.ok) {
             console.error(`${LOG} ❌ Shift Discord API ${res.status}:`, res.body);
             return `❌ Ошибка Discord (${res.status})`;
@@ -877,15 +946,17 @@ async function handleSmena() {
         shiftState.lastShiftDate = today;
         shiftState.lastShiftClosed = false;
         shiftState.lastShiftContent = content;
-        saveShiftState();
-        console.log(`${LOG} ✅ Смена начата: ${dateStr}, msgId=${msgId}`);
+        savePerUserState();
+        console.log(`${LOG} ✅ Смена начата (${userName}): ${dateStr}, msgId=${msgId}`);
         return `✅ <b>Смена начата!</b>\n\n📅 ${escapeHtml(dateStr)}\n🕐 12-0\n\nDiscord сообщение отправлено.`;
     } catch (e) {
         return `❌ Ошибка: ${e.message}`;
     }
 }
 
-async function handleSmenoff() {
+async function handleSmenoff(chatId) {
+    const shiftState = getUserState(chatId).shift;
+    const token = getDiscordToken(chatId);
     if (!shiftState.lastShiftMessageId) {
         return '❌ Нет активной смены для закрытия.';
     }
@@ -906,13 +977,13 @@ async function handleSmenoff() {
             return '❌ Нет сохранённого текста смены. Попробуйте /smena заново.';
         }
         const newContent = oldContent.replace(/^Начал/, 'Начал/ Закрыл');
-        const editRes = await editDiscordMessage(SHIFT_CHANNEL_ID, shiftState.lastShiftMessageId, newContent);
+        const editRes = await editDiscordMessage(SHIFT_CHANNEL_ID, shiftState.lastShiftMessageId, newContent, token);
         if (!editRes.ok) {
             console.error(`${LOG} ❌ Shift edit Discord API ${editRes.status}:`, editRes.body);
             return `❌ Ошибка редактирования (${editRes.status})`;
         }
         shiftState.lastShiftClosed = true;
-        saveShiftState();
+        savePerUserState();
         console.log(`${LOG} ✅ Смена закрыта, сообщение отредактировано.`);
         return `✅ <b>Смена закрыта!</b>\n\nDiscord сообщение отредактировано: "Начал/ Закрыл"`;
     } catch (e) {
@@ -928,46 +999,42 @@ function scheduleShiftReminder() {
     const hour = getKyivHour();
     const minute = getKyivMinute();
 
-    // Already reminded/skipped today
-    if (shiftState.reminderSentDate === today) {
-        scheduleNextDayReminder();
-        return;
-    }
-    // Already had /smena today
-    if (shiftState.lastShiftDate === today) {
+    // Check if ALL users are done for today
+    const allDone = users.every(u => {
+        const ss = getUserState(u.tgChatId).shift;
+        return ss.reminderSentDate === today || ss.lastShiftDate === today;
+    });
+    if (allDone) {
         scheduleNextDayReminder();
         return;
     }
 
     if (hour >= 13) {
-        // Past 13:00 — send reminder now
         sendShiftReminder();
     } else if (hour >= 12) {
-        // Between 12:00 and 13:00 — wait until 13:00
         const msUntil13 = ((60 - minute) * 60 * 1000);
         console.log(`${LOG} 📋 Shift reminder scheduled in ${Math.round(msUntil13 / 60000)} min`);
         shiftReminderTimer = setTimeout(() => {
-            // Recheck: maybe /smena was done in the meantime
-            if (shiftState.lastShiftDate === getKyivDate() || shiftState.reminderSentDate === getKyivDate()) {
-                scheduleNextDayReminder();
-                return;
-            }
+            const allDoneNow = users.every(u => {
+                const ss = getUserState(u.tgChatId).shift;
+                return ss.lastShiftDate === getKyivDate() || ss.reminderSentDate === getKyivDate();
+            });
+            if (allDoneNow) { scheduleNextDayReminder(); return; }
             sendShiftReminder();
         }, msUntil13);
     } else {
-        // Before 12:00 — wait until 13:00
         const now = new Date();
-        // Calculate ms until 13:00 Kyiv time
         const kyivNow = new Date(now.toLocaleString('en-US', { timeZone: SHIFT_TZ }));
         const target = new Date(kyivNow);
         target.setHours(13, 0, 0, 0);
         const msUntil = target.getTime() - kyivNow.getTime();
         console.log(`${LOG} 📋 Shift reminder scheduled in ${Math.round(msUntil / 60000)} min (before noon)`);
         shiftReminderTimer = setTimeout(() => {
-            if (shiftState.lastShiftDate === getKyivDate() || shiftState.reminderSentDate === getKyivDate()) {
-                scheduleNextDayReminder();
-                return;
-            }
+            const allDoneNow = users.every(u => {
+                const ss = getUserState(u.tgChatId).shift;
+                return ss.lastShiftDate === getKyivDate() || ss.reminderSentDate === getKyivDate();
+            });
+            if (allDoneNow) { scheduleNextDayReminder(); return; }
             sendShiftReminder();
         }, Math.max(0, msUntil));
     }
@@ -987,9 +1054,7 @@ function scheduleNextDayReminder() {
 
 async function sendShiftReminder() {
     const today = getKyivDate();
-    shiftState.reminderSentDate = today;
-    saveShiftState();
-    console.log(`${LOG} ⏰ Sending shift reminder for ${today}`);
+    console.log(`${LOG} ⏰ Sending shift reminders for ${today}`);
     const text = '⏰ <b>Вы забыли отметиться на смену!</b>\n\nХотите отметиться?';
     const keyboard = {
         inline_keyboard: [
@@ -999,7 +1064,13 @@ async function sendShiftReminder() {
             ]
         ]
     };
-    await tgSendMessage(text, keyboard);
+    for (const user of users) {
+        const ss = getUserState(user.tgChatId).shift;
+        if (ss.lastShiftDate === today || ss.reminderSentDate === today) continue;
+        ss.reminderSentDate = today;
+        await tgSendMessage(user.tgChatId, text, keyboard);
+    }
+    savePerUserState();
     scheduleNextDayReminder();
 }
 
@@ -1073,7 +1144,7 @@ function startActivityTimer(channelId, type) {
         markDirty();
         console.log(`${LOG} ⏰ Таймер сработал: #${record.channelName} (${type}, ${timeoutMin} мин.)`);
         if (!botPaused) {
-            enqueue({ ...buildActivityMessage(record, type, timeoutMin), channelId });
+            enqueueToAll({ ...buildActivityMessage(record, type, timeoutMin), channelId });
         } else {
             console.log(`${LOG} ⏸ Пауза — уведомление таймера пропущено.`);
         }
@@ -1103,7 +1174,7 @@ function restoreActivityTimers() {
             record.waitingForReply = false;
             record.activityTimerType = null;
             markDirty();
-            enqueue({ ...buildActivityMessage(record, type, timeoutMin), channelId });
+            enqueueToAll({ ...buildActivityMessage(record, type, timeoutMin), channelId });
             console.log(`${LOG} ⏰ Истёк пока оффлайн: #${record.channelName} (${Math.round(elapsed / 1000)}с назад)`);
         } else {
             const remaining = totalMs - elapsed;
@@ -1112,7 +1183,7 @@ function restoreActivityTimers() {
                 record.waitingForReply = false;
                 record.activityTimerType = null;
                 markDirty();
-                enqueue({ ...buildActivityMessage(record, type, timeoutMin), channelId });
+                enqueueToAll({ ...buildActivityMessage(record, type, timeoutMin), channelId });
             }, remaining);
             noReplyTimers.set(channelId, timer);
             console.log(`${LOG} ⏰ Таймер #${record.channelName}: ${type}, ${Math.round(remaining / 1000)}с осталось`);
@@ -1612,7 +1683,7 @@ async function fetchGuildChannelsREST(guildId) {
         console.log(`${LOG} 🌐 Загружаем каналы через REST API...`);
         const res = await httpGet(
             `https://discord.com/api/v9/guilds/${guildId}/channels`,
-            { Authorization: DISCORD_TOKEN }
+            { Authorization: GATEWAY_TOKEN }
         );
         if (!res.ok) {
             console.error(`${LOG} REST /channels ошибка: ${res.status}`);
@@ -1659,7 +1730,7 @@ function subscribeToTicketChannels(guildId) {
             try {
                 const res = await httpGet(
                     `https://discord.com/api/v9/channels/${chId}/messages?limit=1`,
-                    { Authorization: DISCORD_TOKEN }
+                    { Authorization: GATEWAY_TOKEN }
                 );
                 if (res.ok) {
                     const msgs = JSON.parse(res.body);
@@ -1714,7 +1785,7 @@ function subscribeToSingleChannel(guildId, channelId) {
         try {
             await httpGet(
                 `https://discord.com/api/v9/channels/${channelId}/messages?limit=1`,
-                { Authorization: DISCORD_TOKEN }
+                { Authorization: GATEWAY_TOKEN }
             );
         } catch (e) { /* ignore */ }
     })();
@@ -1785,9 +1856,9 @@ function onChannelCreate(data) {
     (async () => {
         const threadId = await ensureThread(record);
         const msg = buildTicketCreatedMessage(data, guild);
-        enqueue(threadId !== null ? { ...msg, threadId, replyMarkup: undefined, channelId: data.id } : { ...msg, channelId: data.id });
+        enqueueToAll(threadId !== null ? { ...msg, threadId, replyMarkup: undefined, channelId: data.id } : { ...msg, channelId: data.id });
         if (getPriority(data.name || '').high && config.mentionOnHighPriority) {
-            enqueue({ ...buildHighPriorityAlert(data.name || data.id), channelId: data.id });
+            enqueueToAll({ ...buildHighPriorityAlert(data.name || data.id), channelId: data.id });
         }
     })();
 }
@@ -1842,10 +1913,10 @@ function onChannelDelete(data) {
 
     const closedMsg = buildTicketClosedMessage(fallback);
     if (fallback.tgThreadId !== null && config.forumMode) {
-        enqueue({ ...closedMsg, threadId: fallback.tgThreadId, channelId: data.id });
+        enqueueToAll({ ...closedMsg, threadId: fallback.tgThreadId, channelId: data.id });
         setTimeout(() => tgCloseForumTopic(fallback.tgThreadId), 3000);
     } else {
-        enqueue({ ...closedMsg, channelId: data.id });
+        enqueueToAll({ ...closedMsg, channelId: data.id });
     }
 }
 
@@ -1874,9 +1945,9 @@ function onThreadCreate(data) {
         (async () => {
             const threadId = await ensureThread(record);
             const msg = buildTicketCreatedMessage(data, guild);
-            enqueue(threadId !== null ? { ...msg, threadId, replyMarkup: undefined, channelId: data.id } : { ...msg, channelId: data.id });
+            enqueueToAll(threadId !== null ? { ...msg, threadId, replyMarkup: undefined, channelId: data.id } : { ...msg, channelId: data.id });
             if (getPriority(data.name || '').high && config.mentionOnHighPriority) {
-                enqueue({ ...buildHighPriorityAlert(data.name || data.id), channelId: data.id });
+                enqueueToAll({ ...buildHighPriorityAlert(data.name || data.id), channelId: data.id });
             }
         })();
     }
@@ -1965,7 +2036,7 @@ function onMessageCreate(data) {
         ].join('\n');
         (async () => {
             const threadId = await ensureThread(record);
-            if (threadId !== null) enqueue({ text: threadText, threadId });
+            if (threadId !== null) enqueueToAll({ text: threadText, threadId });
         })();
     }
 
@@ -1990,23 +2061,24 @@ function onMessageCreate(data) {
     if (!SAFE_MESSAGE_TYPES.has(data.type ?? 0)) return;
 
     notifiedFirstMessage.add(channelId);
-    if (!config.forumMode) enqueue({ ...buildFirstMessageNotification(channel, data), channelId });
+    if (!config.forumMode) enqueueToAll({ ...buildFirstMessageNotification(channel, data), channelId });
     if (getPriority(channel?.name || '', data.content || '').high && config.mentionOnHighPriority) {
-        enqueue({ ...buildHighPriorityAlert(channel?.name || channelId), channelId });
+        enqueueToAll({ ...buildHighPriorityAlert(channel?.name || channelId), channelId });
     }
 
-    // ── Ticket Chat: forward player messages to TG ──
-    if (ticketChatState.activeTicketId === channelId) {
-        // Loop protection: ignore our own messages
-        if (sentByBot.has(data.id)) return;
-        if (selfUserId && author.id === selfUserId) return;
-        // Don't forward staff messages (they're ours)
-        // Forward player messages
-        const fwd = buildForwardedMessage(
-            record.channelName, author, data.member, data.content || '',
-            data.attachments || []
-        );
-        enqueue({ text: fwd, channelId });
+    // ── Ticket Chat: forward player messages to ALL users who have this ticket selected ──
+    // Loop protection: ignore our own messages
+    if (sentByBot.has(data.id)) return;
+    if (selfUserId && author.id === selfUserId) return;
+    for (const user of users) {
+        const uState = getUserState(user.tgChatId).ticketChat;
+        if (uState.activeTicketId === channelId) {
+            const fwd = buildForwardedMessage(
+                record.channelName, author, data.member, data.content || '',
+                data.attachments || []
+            );
+            enqueueToUser(user.tgChatId, { text: fwd, channelId });
+        }
     }
 }
 
@@ -2048,92 +2120,96 @@ async function pollTelegram() {
             if (update.callback_query) {
                 const cbq = update.callback_query;
                 const cbChatId = String(cbq?.message?.chat?.id || '');
-                if (cbChatId !== String(config.tgChatId)) continue;
+                if (!allTgChatIds.has(cbChatId)) continue;
+                const cbToken = getDiscordToken(cbChatId);
                 const cbData = cbq.data || '';
                 if (cbData === 'shift_checkin') {
-                    const result = await handleSmena();
+                    const result = await handleSmena(cbChatId);
                     await tgAnswerCallbackQuery(cbq.id, result.startsWith('✅') ? 'Отмечено!' : 'Ошибка');
-                    await tgEditMessageText(config.tgChatId, cbq.message.message_id, result);
+                    await tgEditMessageText(cbChatId, cbq.message.message_id, result);
                 } else if (cbData === 'shift_skip') {
                     await tgAnswerCallbackQuery(cbq.id, 'Пропущено');
-                    await tgEditMessageText(config.tgChatId, cbq.message.message_id, '⏭ Смена пропущена на сегодня.');
+                    await tgEditMessageText(cbChatId, cbq.message.message_id, '⏭ Смена пропущена на сегодня.');
                 }
                 // ── Ticket Chat callbacks ──
                 else if (cbData.startsWith('tsel_')) {
                     const chId = cbData.slice(5);
-                    await handleSelectTicket(chId, cbq.id, cbq.message.message_id);
+                    await handleSelectTicket(chId, cbq.id, cbq.message.message_id, cbChatId);
                 } else if (cbData.startsWith('tpage_')) {
                     const pg = parseInt(cbData.slice(6), 10) || 0;
                     await tgAnswerCallbackQuery(cbq.id, `Стр. ${pg + 1}`);
-                    const msg = buildTicketListMessage(pg);
-                    await tgEditMessageText(config.tgChatId, cbq.message.message_id, msg.text, msg.markup);
+                    const msg = buildTicketListMessage(pg, cbChatId);
+                    await tgEditMessageText(cbChatId, cbq.message.message_id, msg.text, msg.markup);
                 } else if (cbData === 'tunselect') {
-                    await handleUnselectTicket(cbq.id, cbq.message.message_id);
+                    await handleUnselectTicket(cbq.id, cbq.message.message_id, cbChatId);
                 }
                 continue;
             }
 
             const text = update?.message?.text || '';
             const chatId = String(update?.message?.chat?.id || '');
-            if (chatId !== String(config.tgChatId)) continue;
+            if (!allTgChatIds.has(chatId)) continue;
+            const token = getDiscordToken(chatId);
 
             // Handle reply to bot message → send to Discord ticket
             const replyTo = update?.message?.reply_to_message?.message_id;
             if (replyTo && text && !text.startsWith('/')) {
-                enqueue({ text: await handleReplyToTicket(replyTo, text) });
+                enqueueToUser(chatId, { text: await handleReplyToTicket(replyTo, text, token) });
                 continue;
             }
 
-            if (text === '/start' || text.startsWith('/start ')) enqueue({ text: buildStartMessage() });
+            if (text === '/start' || text.startsWith('/start ')) enqueueToUser(chatId, { text: buildStartMessage() });
             else if (text === '/list' || text.startsWith('/list ')) {
-                const msg = buildTicketListMessage(0);
-                enqueue({ text: msg.text, replyMarkup: msg.markup });
+                const msg = buildTicketListMessage(0, chatId);
+                enqueueToUser(chatId, { text: msg.text, replyMarkup: msg.markup });
             }
             else if (text === '/ticket' || text === '/active') {
-                const msg = buildActiveTicketMessage();
-                enqueue({ text: msg.text, replyMarkup: msg.markup });
+                const msg = buildActiveTicketMessage(chatId);
+                enqueueToUser(chatId, { text: msg.text, replyMarkup: msg.markup });
             }
             else if (text === '/unselect') {
-                ticketChatState.activeTicketId = null;
-                ticketChatState.activeTicketName = null;
-                saveTicketChatState();
-                enqueue({ text: '❌ Тикет сброшен. Нажми /list чтобы выбрать новый.', replyMarkup: { inline_keyboard: [[{ text: '📋 Открыть список', callback_data: 'tpage_0' }]] } });
+                const uState = getUserState(chatId).ticketChat;
+                uState.activeTicketId = null;
+                uState.activeTicketName = null;
+                savePerUserState();
+                enqueueToUser(chatId, { text: '❌ Тикет сброшен. Нажми /list чтобы выбрать новый.', replyMarkup: { inline_keyboard: [[{ text: '📋 Открыть список', callback_data: 'tpage_0' }]] } });
             }
             else if (text.startsWith('/s ') || text === '/reply' || text.startsWith('/reply ')) {
                 const msgText = text.startsWith('/s ') ? text.slice(3) : text.startsWith('/reply ') ? text.slice(7) : '';
-                const result = await handleSendToTicket(msgText);
-                enqueue({ text: result.text, replyMarkup: result.markup });
+                const result = await handleSendToTicket(msgText, chatId);
+                enqueueToUser(chatId, { text: result.text, replyMarkup: result.markup });
             }
             else if (text === '/s') {
-                enqueue({ text: '❌ Формат: <code>/s текст сообщения</code>' });
+                enqueueToUser(chatId, { text: '❌ Формат: <code>/s текст сообщения</code>' });
             }
-            else if (text === '/oldlist' || text.startsWith('/oldlist ')) enqueue({ text: buildListMessage() });
-            else if (text === '/stats' || text.startsWith('/stats ')) enqueue({ text: buildStatsMessage() });
-            else if (text === '/analytics' || text.startsWith('/analytics ')) enqueue({ text: buildAnalyticsMessage() });
-            else if (text === '/settings' || text.startsWith('/settings ')) enqueue({ text: buildSettingsMessage() });
-            else if (text.startsWith('/set ')) enqueue({ text: handleSetCommand(text.slice(5)) });
-            else if (text === '/set') enqueue({ text: handleSetCommand('') });
-            else if (text === '/pause' || text.startsWith('/pause ')) enqueue({ text: handlePause() });
-            else if (text === '/resume' || text.startsWith('/resume ')) enqueue({ text: handleResume() });
-            else if (text === '/reset' || text.startsWith('/reset ')) enqueue({ text: handleReset() });
-            else if (text.startsWith('/msg ')) enqueue({ text: await handleMsgCommand(text.slice(5)) });
-            else if (text === '/msg') enqueue({ text: await handleMsgCommand('') });
-            else if (text === '/test' || text.startsWith('/test ')) enqueue({ text: await handleTestSend(text.slice(5).trim() || '') });
-            else if (text === '/smena' || text.startsWith('/smena ')) enqueue({ text: await handleSmena() });
-            else if (text === '/smenoff' || text.startsWith('/smenoff ')) enqueue({ text: await handleSmenoff() });
+            else if (text === '/oldlist' || text.startsWith('/oldlist ')) enqueueToUser(chatId, { text: buildListMessage() });
+            else if (text === '/stats' || text.startsWith('/stats ')) enqueueToUser(chatId, { text: buildStatsMessage() });
+            else if (text === '/analytics' || text.startsWith('/analytics ')) enqueueToUser(chatId, { text: buildAnalyticsMessage() });
+            else if (text === '/settings' || text.startsWith('/settings ')) enqueueToUser(chatId, { text: buildSettingsMessage() });
+            else if (text.startsWith('/set ')) enqueueToUser(chatId, { text: handleSetCommand(text.slice(5)) });
+            else if (text === '/set') enqueueToUser(chatId, { text: handleSetCommand('') });
+            else if (text === '/pause' || text.startsWith('/pause ')) enqueueToUser(chatId, { text: handlePause() });
+            else if (text === '/resume' || text.startsWith('/resume ')) enqueueToUser(chatId, { text: handleResume() });
+            else if (text === '/reset' || text.startsWith('/reset ')) enqueueToUser(chatId, { text: handleReset() });
+            else if (text.startsWith('/msg ')) enqueueToUser(chatId, { text: await handleMsgCommand(text.slice(5), token) });
+            else if (text === '/msg') enqueueToUser(chatId, { text: await handleMsgCommand('', token) });
+            else if (text === '/test' || text.startsWith('/test ')) enqueueToUser(chatId, { text: await handleTestSend(text.slice(5).trim() || '', token) });
+            else if (text === '/smena' || text.startsWith('/smena ')) enqueueToUser(chatId, { text: await handleSmena(chatId) });
+            else if (text === '/smenoff' || text.startsWith('/smenoff ')) enqueueToUser(chatId, { text: await handleSmenoff(chatId) });
             else if (text === '/resetsmen') {
-                shiftState.lastShiftMessageId = null;
-                shiftState.lastShiftDate = null;
-                shiftState.lastShiftClosed = false;
-                shiftState.reminderSentDate = null;
-                shiftState.lastShiftContent = null;
-                saveShiftState();
-                enqueue({ text: '🔄 Состояние смены сброшено. Можно делать /smena заново.' });
+                const shiftSt = getUserState(chatId).shift;
+                shiftSt.lastShiftMessageId = null;
+                shiftSt.lastShiftDate = null;
+                shiftSt.lastShiftClosed = false;
+                shiftSt.reminderSentDate = null;
+                shiftSt.lastShiftContent = null;
+                savePerUserState();
+                enqueueToUser(chatId, { text: '🔄 Состояние смены сброшено. Можно делать /smena заново.' });
             }
             // Free-text relay to active ticket (no command, no reply)
-            else if (!text.startsWith('/') && ticketChatState.activeTicketId && text.trim()) {
-                const result = await handleSendToTicket(text);
-                enqueue({ text: result.text, replyMarkup: result.markup });
+            else if (!text.startsWith('/') && getUserState(chatId).ticketChat.activeTicketId && text.trim()) {
+                const result = await handleSendToTicket(text, chatId);
+                enqueueToUser(chatId, { text: result.text, replyMarkup: result.markup });
             }
         }
     } catch (e) {
@@ -2304,7 +2380,7 @@ function sendIdentify() {
     const payload = IS_BOT_TOKEN
         ? {
             // Bot mode — requires intents
-            token: DISCORD_TOKEN,
+            token: GATEWAY_TOKEN,
             intents: 33283, // GUILDS(1) | GUILD_MEMBERS(2) | GUILD_MESSAGES(512) | MESSAGE_CONTENT(32768)
             properties: { os: 'linux', browser: 'ticket-notifier', device: 'ticket-notifier' },
             compress: false,
@@ -2312,7 +2388,7 @@ function sendIdentify() {
         }
         : {
             // User token (selfbot) mode — no intents field
-            token: DISCORD_TOKEN,
+            token: GATEWAY_TOKEN,
             properties: { os: 'Windows', browser: 'Chrome', device: '' },
             presence: { status: 'online', activities: [], since: 0, afk: false },
             compress: false,
@@ -2326,7 +2402,7 @@ function sendResume() {
     ws.send(JSON.stringify({
         op: 6,
         d: {
-            token: DISCORD_TOKEN,
+            token: GATEWAY_TOKEN,
             session_id: sessionId,
             seq,
         },
@@ -2368,21 +2444,21 @@ async function main() {
     console.log(`${LOG}  Telegram Ticket Notifier — 24/7`);
     console.log(`${LOG} ═══════════════════════════════════════`);
 
-    if (!DISCORD_TOKEN || DISCORD_TOKEN === 'YOUR_BOT_TOKEN_HERE') {
+    if (!GATEWAY_TOKEN || GATEWAY_TOKEN === 'YOUR_BOT_TOKEN_HERE') {
         console.error(`${LOG} ❌ Discord токен не указан!`);
         console.error(`${LOG}    Укажите "discordBotToken" (бот) или "discordToken" (юзер) в config.json`);
         process.exit(1);
     }
     console.log(`${LOG} 🔑 Режим: ${IS_BOT_TOKEN ? 'Discord Bot' : 'User Token (selfbot)'}`);
     if (!IS_BOT_TOKEN) console.log(`${LOG} ⚠️  Selfbot нарушает ToS Discord. Рекомендуется использовать Bot Token.`);
-    if (!config.tgToken || !config.tgChatId) {
+    if (!config.tgToken) {
         console.error(`${LOG} ❌ Telegram не настроен! Отредактируйте config.json.`);
         process.exit(1);
     }
+    console.log(`${LOG} 👥 Пользователей: ${users.length} (${users.map(u => u.name || u.tgChatId).join(', ')})`);
 
     loadState();
-    loadShiftState();
-    loadTicketChatState();
+    loadPerUserState();
     startAutosave();
     connectGateway();
     scheduleShiftReminder();
@@ -2396,7 +2472,7 @@ async function main() {
         noReplyTimers.forEach(t => clearTimeout(t));
         noReplyTimers.clear();
         saveState();
-        saveShiftState();
+        savePerUserState();
         if (ws) ws.close(1000);
         setTimeout(() => process.exit(0), 1000);
     };
