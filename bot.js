@@ -2,28 +2,6 @@
 // ═══════════════════════════════════════════════════════════════
 //  Telegram Ticket Notifier — Discord Gateway Bot (24/7)
 // ═══════════════════════════════════════════════════════════════
-//
-//  Запуск:  npm install && node bot.js
-//
-//  Поддерживает два режима:
-//
-//  ─── Режим 1: Discord Bot (рекомендуется) ───
-//    1. Создайте бота на https://discord.com/developers/applications
-//    2. Скопируйте Bot Token → "discordBotToken" в config.json
-//    3. Включите Intents: SERVER MEMBERS + MESSAGE CONTENT
-//    4. Пригласите бота на сервер (scope=bot, permissions=66560)
-//    5. Убедитесь что бот видит категорию тикетов
-//
-//  ─── Режим 2: User Token (selfbot) ───
-//    1. Вставьте пользовательский токен в "discordToken" в config.json
-//    ⚠️ Нарушает ToS Discord — риск бана аккаунта
-//
-//  24/7 через PM2:
-//    npm install -g pm2
-//    pm2 start bot.js --name ticket-bot
-//    pm2 startup && pm2 save
-//
-// ═══════════════════════════════════════════════════════════════
 
 const WebSocket = require('ws');
 const https = require('https');
@@ -40,7 +18,6 @@ try {
     config = {};
 }
 
-// Environment variables override config.json (for REMOVED_PLATFORM_REFERENCE / Docker / VPS)
 if (process.env.DISCORD_TOKEN) config.discordToken = process.env.DISCORD_TOKEN;
 if (process.env.DISCORD_BOT_TOKEN) config.discordBotToken = process.env.DISCORD_BOT_TOKEN;
 if (process.env.TG_TOKEN) config.tgToken = process.env.TG_TOKEN;
@@ -53,7 +30,6 @@ if (process.env.USERS) {
     try { config.users = JSON.parse(process.env.USERS); } catch (e) { console.error('[TicketBot] USERS env parse error:', e.message); }
 }
 
-// Defaults
 config.priorityKeywords = config.priorityKeywords || ["срочно", "urgent", "баг", "bug", "оплата", "payment", "помогите", "help"];
 config.includeFirstUserMessage = config.includeFirstUserMessage ?? true;
 config.notifyOnClose = config.notifyOnClose ?? true;
@@ -66,21 +42,10 @@ config.closingPhrase = config.closingPhrase || "остались вопросы"
 config.forumMode = config.forumMode ?? false;
 config.pollingIntervalSec = config.pollingIntervalSec || 3;
 
-// Auto-greet defaults
 config.autoGreetRoleIds = config.autoGreetRoleIds || ['1334466933273395242'];
 config.autoGreetText = config.autoGreetText || 'Здравствуйте, чем могу помочь?';
 config.autoGreetEnabled = config.autoGreetEnabled ?? true;
 
-// Auto-reply defaults (smart template system)
-// Rule format:
-//   name        — human-readable label
-//   channelId   — Discord channel to listen in
-//   includeAny  — message must contain at least ONE of these (OR)
-//   includeAll  — message must contain ALL groups (AND); each group is an array (OR within group)
-//   excludeAny  — if message contains ANY of these → skip (do NOT reply)
-//   patterns    — (legacy) simple pattern list, works like includeAny
-//   response    — text to send as reply
-//   enabled     — on/off toggle
 config.autoReplies = config.autoReplies || [
     {
         name: 'когда вайп',
@@ -95,9 +60,7 @@ config.autoReplies = config.autoReplies || [
         guildId: '1266100282551570522',
         channelId: '1475424153057366036',
         includeAll: [
-            // Группа A — вопрос "что делать"
             ['что делать', 'что мне делать', 'подскажите что делать', 'как быть'],
-            // Группа B — бан/блокировка
             ['бан', 'забан', 'забанили', 'забанен', 'баннули', 'блок', 'блокировка'],
         ],
         excludeAny: [
@@ -109,7 +72,6 @@ config.autoReplies = config.autoReplies || [
     },
 ];
 
-// Binds defaults
 config.binds = config.binds || {
     '25': { name: '25', message: 'Здравствуйте!** **Вайп состоится: 25.10.2025 **Время: 17:00 по МСК.' },
     '27': { name: '27', message: '**Здравствуйте!** **Вайп состоится: 27.09.2025 **Время:** 14:00 по МСК.' },
@@ -192,7 +154,6 @@ const processedUpdateIds = new Set();
 const sessionStats = { messagesFailed: 0 };
 const autoGreetedChannels = new Set();
 
-// Gateway state
 let ws = null;
 let sessionId = null;
 let resumeGatewayUrl = null;
@@ -201,16 +162,16 @@ let heartbeatTimer = null;
 let receivedAck = true;
 let gatewayReady = false;
 let channelsFetched = false;
-let guildCreateHandled = false;  // prevent double onGuildCreate
-const notifiedTicketIds = new Set();  // dedup ticket notifications
-let botPaused = false;  // pause notifications
-const tgMsgToChannel = new Map();  // tg_message_id → { channelId, chatId }
-let selfUserId = null;              // Discord user ID (set on READY)
+let guildCreateHandled = false;
+const notifiedTicketIds = new Set();
+let botPaused = false;
+const tgMsgToChannel = new Map();
+let selfUserId = null;
 
 // ── Per-User State ────────────────────────────────────────────
 const PER_USER_STATE_FILE = path.join(DATA_DIR, 'per_user_state.json');
-const perUserState = new Map(); // tgChatId → { ticketChat: {...}, shift: {...} }
-const sentByBot = new Set();  // Discord message IDs sent by us (loop protection)
+const perUserState = new Map();
+const sentByBot = new Set();
 const TICKETS_PER_PAGE = 6;
 let shiftReminderTimer = null;
 let shiftCloseReminderTimer = null;
@@ -243,7 +204,6 @@ function getUserName(chatId) {
 function loadPerUserState() {
     try {
         if (!fs.existsSync(PER_USER_STATE_FILE)) {
-            // Migrate from old single-user files
             migrateOldState();
             return;
         }
@@ -269,7 +229,6 @@ function loadPerUserState() {
 }
 
 function migrateOldState() {
-    // Migrate from old single-user ticket_chat_state.json and shift_state.json
     const oldTcFile = path.join(DATA_DIR, 'ticket_chat_state.json');
     const oldShiftFile = path.join(DATA_DIR, 'shift_state.json');
     const firstChatId = users[0]?.tgChatId;
@@ -401,6 +360,35 @@ function getMemberDisplayName(member, author) {
 
 function snowflakeToTimestamp(id) {
     return Number(BigInt(id) >> 22n) + 1420070400000;
+}
+
+// ── Helper: get unique guild IDs from autoReplies ─────────────
+
+function getAutoReplyGuildIds() {
+    const ids = new Set();
+    for (const rule of (config.autoReplies || [])) {
+        if (rule.guildId) ids.add(rule.guildId);
+    }
+    return ids;
+}
+
+function getAutoReplyGuildChannels() {
+    const map = new Map();
+    for (const rule of (config.autoReplies || [])) {
+        if (rule.guildId && rule.channelId) {
+            if (!map.has(rule.guildId)) map.set(rule.guildId, new Set());
+            map.get(rule.guildId).add(rule.channelId);
+        }
+    }
+    return map;
+}
+
+function subscribeToAutoReplyChannels(guildId) {
+    const chIds = [];
+    for (const rule of (config.autoReplies || [])) {
+        if (rule.guildId === guildId && rule.channelId) chIds.push(rule.channelId);
+    }
+    if (chIds.length > 0) sendLazyRequest(guildId, chIds);
 }
 
 // ── State Management ──────────────────────────────────────────
@@ -584,10 +572,8 @@ async function runQueue() {
             sendQueue.shift();
             ps.totalMessagesSent++;
             markDirty();
-            // Track tg message → discord channel for reply feature
             if (result.messageId && item.channelId) {
                 tgMsgToChannel.set(result.messageId, { channelId: item.channelId, chatId: item.chatId });
-                // Keep map small
                 if (tgMsgToChannel.size > 400) {
                     const keys = [...tgMsgToChannel.keys()];
                     for (let i = 0; i < keys.length - 200; i++) tgMsgToChannel.delete(keys[i]);
@@ -696,7 +682,7 @@ async function handleMsgCommand(argsStr, token) {
 
 async function handleReplyToTicket(replyToMsgId, text, token) {
     const mapping = tgMsgToChannel.get(replyToMsgId);
-    const channelId = mapping?.channelId || mapping; // backward compat
+    const channelId = mapping?.channelId || mapping;
     if (!channelId) {
         return '❌ Не удалось определить тикет. Используй /msg <номер> <текст>';
     }
@@ -769,9 +755,7 @@ function buildTicketListMessage(page, chatId) {
     lines.push(``);
     lines.push(`📄 Стр. ${page + 1}/${totalPages} │ 🕐 ${nowTime()}`);
 
-    // Build inline keyboard
     const buttons = [];
-    // Ticket buttons (2 per row)
     for (let i = 0; i < pageTickets.length; i += 2) {
         const row = [];
         for (let j = i; j < Math.min(i + 2, pageTickets.length); j++) {
@@ -787,14 +771,12 @@ function buildTicketListMessage(page, chatId) {
         buttons.push(row);
     }
 
-    // Navigation row
     const navRow = [];
     if (page > 0) navRow.push({ text: '⬅️ Назад', callback_data: `tpage_${page - 1}` });
     navRow.push({ text: '🔄 Обновить', callback_data: `tpage_${page}` });
     if (page < totalPages - 1) navRow.push({ text: 'Вперёд ➡️', callback_data: `tpage_${page + 1}` });
     buttons.push(navRow);
 
-    // Unselect button
     if (uState.activeTicketId) {
         buttons.push([{ text: '❌ Снять выбор', callback_data: 'tunselect' }]);
     }
@@ -889,7 +871,6 @@ async function handleSendToTicket(text, chatId) {
         return { text: '❌ Нельзя отправить пустое сообщение.\n\n<code>/s текст</code>', markup: null };
     }
 
-    // Split long messages
     const MAX_DISCORD_LEN = 1900;
     const parts = [];
     let remaining = text;
@@ -907,12 +888,10 @@ async function handleSendToTicket(text, chatId) {
 
     try {
         for (const part of parts) {
-            const content = part;
-            const res = await sendDiscordMessage(channelId, content, token);
+            const res = await sendDiscordMessage(channelId, part, token);
             if (!res.ok) {
                 return { text: `❌ Ошибка Discord (${res.status})`, markup: null };
             }
-            // Track sent message ID for loop protection
             try {
                 const j = JSON.parse(res.body);
                 if (j.id) {
@@ -1006,7 +985,6 @@ async function handleHistory(chatId) {
     if (!messages || messages.length === 0) {
         return [{ text: '📭 Нет сообщений в тикете.', markup: null }];
     }
-    // Sort from old to new (Discord returns newest first)
     messages.reverse();
     const lines = [`📜 <b>История #${escapeHtml(channelName)}</b> (${messages.length} сообщ.)\n`];
     for (const msg of messages) {
@@ -1092,7 +1070,6 @@ async function handleBindSearch(query, chatId) {
             return { text: `❌ Ошибка: ${e.message}`, markup: null };
         }
     }
-    // Multiple matches — show buttons
     const buttons = [];
     for (let i = 0; i < matches.length; i += 2) {
         const row = [];
@@ -1179,7 +1156,7 @@ function handleGreet(args) {
 // ── Shift (Смена) System ──────────────────────────────────────
 
 function getKyivDate() {
-    return new Date().toLocaleDateString('sv-SE', { timeZone: SHIFT_TZ }); // 'YYYY-MM-DD'
+    return new Date().toLocaleDateString('sv-SE', { timeZone: SHIFT_TZ });
 }
 
 function getKyivHour() {
@@ -1195,12 +1172,10 @@ function formatKyivDate() {
 }
 
 function loadShiftState() {
-    // Shift state is now per-user inside perUserState — loaded via loadPerUserState()
     console.log(`${LOG} 📋 Shift state: per-user (loaded via per_user_state.json)`);
 }
 
 function saveShiftState() {
-    // Shift state is now per-user — saved via savePerUserState()
     savePerUserState();
 }
 
@@ -1244,11 +1219,9 @@ async function handleSmenoff(chatId) {
         return '⚠️ Смена уже закрыта.';
     }
     try {
-        // Reconstruct content from saved state (no need to GET)
         let oldContent = shiftState.lastShiftContent;
         if (!oldContent && shiftState.lastShiftDate) {
-            // Legacy: reconstruct from date
-            const d = shiftState.lastShiftDate; // 'YYYY-MM-DD'
+            const d = shiftState.lastShiftDate;
             const [y, m, dd] = d.split('-');
             const dateStr = `${dd}.${m}.${y}`;
             oldContent = `Начал\n1. ${dateStr}\n2. 12-0`;
@@ -1283,7 +1256,7 @@ function msUntilKyivHour(targetHour, targetMinute = 0) {
     const target = new Date(kyivNow);
     target.setHours(targetHour, targetMinute, 0, 0);
     let ms = target.getTime() - kyivNow.getTime();
-    if (ms < 0) ms += 24 * 60 * 60 * 1000; // next day
+    if (ms < 0) ms += 24 * 60 * 60 * 1000;
     return ms;
 }
 
@@ -1294,14 +1267,12 @@ function scheduleShiftReminder() {
     const minute = getKyivMinute();
     console.log(`${LOG} 📋 scheduleShiftReminder: Kyiv time = ${hour}:${String(minute).padStart(2,'0')}, date = ${today}`);
 
-    // Check if ALL users already checked in today
     const allCheckedIn = users.every(u => {
         const ss = getUserState(u.tgChatId).shift;
         return ss.lastShiftDate === today;
     });
 
     if (allCheckedIn) {
-        // Everyone is checked in, schedule for tomorrow 11:00
         const ms = msUntilKyivHour(11, 0);
         console.log(`${LOG} 📋 Все отмечены. Следующее напоминание через ${Math.round(ms / 3600000)}ч`);
         shiftReminderTimer = setTimeout(() => scheduleShiftReminder(), ms);
@@ -1309,7 +1280,6 @@ function scheduleShiftReminder() {
     }
 
     if (hour < 11) {
-        // Before 11:00 — schedule for 11:00
         const ms = msUntilKyivHour(11, 0);
         console.log(`${LOG} 📋 Напоминание о смене через ${Math.round(ms / 60000)} мин (11:00)`);
         shiftReminderTimer = setTimeout(() => {
@@ -1317,7 +1287,6 @@ function scheduleShiftReminder() {
             scheduleShiftLateReminder();
         }, ms);
     } else if (hour === 11) {
-        // Exactly 11:xx — send start reminder now if not sent, schedule late for 12:00
         const needsStart = users.some(u => {
             const ss = getUserState(u.tgChatId).shift;
             return ss.lastShiftDate !== today && ss.reminderSentDate !== today;
@@ -1326,7 +1295,6 @@ function scheduleShiftReminder() {
         if (needsStart) sendShiftStartReminder();
         scheduleShiftLateReminder();
     } else if (hour < 23) {
-        // 12:00-22:59 — send late reminder now if not sent
         const needsLate = users.some(u => {
             const ss = getUserState(u.tgChatId).shift;
             return ss.lastShiftDate !== today && ss.lateReminderSentDate !== today;
@@ -1335,18 +1303,15 @@ function scheduleShiftReminder() {
         if (needsLate) {
             sendShiftLateReminder();
         } else {
-            // All reminders sent, schedule for tomorrow
             const ms = msUntilKyivHour(11, 0);
             console.log(`${LOG} 📋 Все напоминания отправлены. Следующее через ${Math.round(ms / 3600000)}ч`);
             shiftReminderTimer = setTimeout(() => scheduleShiftReminder(), ms);
         }
     } else {
-        // 23:00+ — schedule for tomorrow
         const ms = msUntilKyivHour(11, 0);
         shiftReminderTimer = setTimeout(() => scheduleShiftReminder(), ms);
     }
 
-    // Always schedule close reminder
     scheduleShiftCloseReminder();
 }
 
@@ -1355,7 +1320,6 @@ function scheduleShiftLateReminder() {
     const ms = msUntilKyivHour(12, 0);
     const hour = getKyivHour();
     if (hour >= 12) {
-        // Already past 12 — send immediately
         sendShiftLateReminder();
         return;
     }
@@ -1380,7 +1344,6 @@ function scheduleShiftCloseReminder() {
     const today = getKyivDate();
     const hour = getKyivHour();
 
-    // Check if any user has an open (unclosed) shift today
     const needsCloseReminder = users.some(u => {
         const ss = getUserState(u.tgChatId).shift;
         return ss.lastShiftDate === today && !ss.lastShiftClosed && ss.closeReminderSentDate !== today;
@@ -1408,12 +1371,10 @@ async function sendShiftStartReminder() {
     console.log(`${LOG} ⏰ 11:00 — напоминание о начале смены`);
     const text = '🕚 <b>Пора отмечаться на смену!</b>\n\nНачинай смену, время 11:00.';
     const keyboard = {
-        inline_keyboard: [
-            [
-                { text: '✅ Отметиться', callback_data: 'shift_checkin' },
-                { text: '⏭ Пропустить', callback_data: 'shift_skip' },
-            ]
-        ]
+        inline_keyboard: [[
+            { text: '✅ Отметиться', callback_data: 'shift_checkin' },
+            { text: '⏭ Пропустить', callback_data: 'shift_skip' },
+        ]]
     };
     for (const user of users) {
         const ss = getUserState(user.tgChatId).shift;
@@ -1429,12 +1390,10 @@ async function sendShiftLateReminder() {
     console.log(`${LOG} ⏰ 12:00 — опоздание на смену`);
     const text = '🚨 <b>Вы опаздываете на смену!</b>\n\nУже 12:00, а вы ещё не отметились. Хотите отметиться сейчас?';
     const keyboard = {
-        inline_keyboard: [
-            [
-                { text: '✅ Отметиться', callback_data: 'shift_checkin' },
-                { text: '⏭ Пропустить', callback_data: 'shift_skip' },
-            ]
-        ]
+        inline_keyboard: [[
+            { text: '✅ Отметиться', callback_data: 'shift_checkin' },
+            { text: '⏭ Пропустить', callback_data: 'shift_skip' },
+        ]]
     };
     for (const user of users) {
         const ss = getUserState(user.tgChatId).shift;
@@ -1443,7 +1402,6 @@ async function sendShiftLateReminder() {
         await tgSendMessage(user.tgChatId, text, keyboard);
     }
     savePerUserState();
-    // Schedule for tomorrow
     const msNext = msUntilKyivHour(11, 0);
     shiftReminderTimer = setTimeout(() => scheduleShiftReminder(), msNext);
 }
@@ -1453,11 +1411,9 @@ async function sendShiftCloseReminder() {
     console.log(`${LOG} ⏰ 23:00 — напоминание о закрытии смены`);
     const text = '🕐 <b>Не забудьте закрыть смену!</b>\n\nУже 23:00. Закройте смену командой /smenoff.';
     const keyboard = {
-        inline_keyboard: [
-            [
-                { text: '🔒 Закрыть смену', callback_data: 'shift_close' },
-            ]
-        ]
+        inline_keyboard: [[
+            { text: '🔒 Закрыть смену', callback_data: 'shift_close' },
+        ]]
     };
     for (const user of users) {
         const ss = getUserState(user.tgChatId).shift;
@@ -1526,7 +1482,6 @@ function startActivityTimer(channelId, type) {
     clearNoReplyTimer(channelId);
     const record = activeTickets.get(channelId);
     if (!record) return;
-    // Always set fresh timestamp when starting a new timer
     record.lastStaffMessageAt = Date.now();
     record.waitingForReply = true;
     record.activityTimerType = type;
@@ -1763,7 +1718,7 @@ function buildStartMessage() {
         `  /msg &lt;номер&gt; &lt;текст&gt; — отправить в тикет`,
         `  Или <b>reply</b> на уведомление`,
         ``,
-        `�  <b>История и бинды:</b>`,
+        `📜  <b>История и бинды:</b>`,
         `  /history — история сообщений тикета`,
         `  /binds — все шаблоны ответов`,
         `  /addbind &lt;имя&gt; &lt;текст&gt; — добавить шаблон`,
@@ -1775,10 +1730,10 @@ function buildStartMessage() {
         `  /greet on|off — вкл/выкл`,
         `  /setgreet &lt;текст&gt; — изменить текст`,
         ``,
-        `�📅  <b>Смена:</b>`,
+        `📅  <b>Смена:</b>`,
         `  /smena — начать смену (отметка в Discord)`,
         `  /smenoff — закрыть смену`,
-        `  ⏰ Авто-напоминание в 13:00 если не отмечено`,
+        `  ⏰ Авто-напоминание в 11:00 если не отмечено`,
         ``,
         `⚙️  <b>Автоматические уведомления:</b>`,
         `  🎫 Новый тикет`,
@@ -2050,20 +2005,16 @@ function scanExistingTickets() {
     }
 }
 
-// ── Discord REST API (selfbot fallback for lazy guilds) ───────
+// ── Discord REST API ──────────────────────────────────────────
 
 function requestLazyGuild(guildId) {
-    // Fetch channels via REST API when GUILD_CREATE has no channels
     fetchGuildChannelsREST(guildId);
 }
 
-// Send op 14 Lazy Request to subscribe to guild channels
-// This is required in selfbot mode to receive MESSAGE_CREATE events
 function sendLazyRequest(guildId, channelIds) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (!channelIds || channelIds.length === 0) return;
 
-    // Build channels object: { "channel_id": [[0, 99]] }
     const channels = {};
     for (const chId of channelIds) {
         channels[chId] = [[0, 99]];
@@ -2083,9 +2034,9 @@ function sendLazyRequest(guildId, channelIds) {
 
     try {
         ws.send(JSON.stringify(payload));
-        console.log(`${LOG} \u{1F4E1} Lazy Request: \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u043D\u0430 ${channelIds.length} \u043A\u0430\u043D\u0430\u043B\u043E\u0432.`);
+        console.log(`${LOG} 📡 Lazy Request: подписка на ${channelIds.length} каналов.`);
     } catch (e) {
-        console.error(`${LOG} Lazy Request \u043E\u0448\u0438\u0431\u043A\u0430:`, e.message);
+        console.error(`${LOG} Lazy Request ошибка:`, e.message);
     }
 }
 
@@ -2116,7 +2067,6 @@ async function fetchGuildChannelsREST(guildId) {
 }
 
 function subscribeToTicketChannels(guildId) {
-    // In selfbot mode, send op 14 + fetch last messages via REST
     const catId = config.ticketsCategoryId;
     if (!catId) return;
 
@@ -2132,7 +2082,6 @@ function subscribeToTicketChannels(guildId) {
 
     if (ticketChannelIds.length === 0) return;
 
-    // Send op 14 Lazy Request to subscribe (receive MESSAGE_CREATE events)
     sendLazyRequest(guildId, ticketChannelIds);
 
     console.log(`${LOG} 📡 Загружаем сообщения из ${ticketChannelIds.length} тикет-каналов...`);
@@ -2153,7 +2102,6 @@ function subscribeToTicketChannels(guildId) {
                             const author = msg.author;
                             const staffSent = msg.member && isStaffFromMember(msg.member);
                             const msgTime = new Date(msg.timestamp).getTime();
-                            // Always update if REST message is newer
                             if (msg.content && (!record.lastMessage || msgTime > record.lastMessageAt)) {
                                 record.lastMessage = (staffSent ? '[Саппорт] ' : '') + msg.content;
                                 record.lastMessageAt = msgTime;
@@ -2166,7 +2114,6 @@ function subscribeToTicketChannels(guildId) {
                         }
                     }
                 } else if (res.status === 404) {
-                    // Channel no longer exists — remove stale ticket
                     console.log(`${LOG} 🗑️ Канал ${chId} не найден (404), удаляем из activeTickets.`);
                     const stale = activeTickets.get(chId);
                     if (stale) {
@@ -2191,7 +2138,6 @@ function subscribeToTicketChannels(guildId) {
 }
 
 function subscribeToSingleChannel(guildId, channelId) {
-    // Send op 14 for the new channel + fetch last message via REST
     sendLazyRequest(guildId, [channelId]);
     (async () => {
         try {
@@ -2206,11 +2152,21 @@ function subscribeToSingleChannel(guildId, channelId) {
 // ── Discord Event Handlers ────────────────────────────────────
 
 function onGuildCreate(guild) {
-    if (guild.id !== config.guildId) return;
+    if (guild.id !== config.guildId) {
+        // For autoReply guilds — just cache channels
+        let chCount = 0;
+        for (const ch of guild.channels || []) {
+            channelCache.set(ch.id, { ...ch, guild_id: guild.id });
+            chCount++;
+        }
+        if (chCount > 0 && !IS_BOT_TOKEN) {
+            subscribeToAutoReplyChannels(guild.id);
+        }
+        return;
+    }
 
     guildCache.set(guild.id, { id: guild.id, name: guild.name || 'Unknown' });
 
-    // Cache all channels
     let chCount = 0;
     for (const ch of guild.channels || []) {
         channelCache.set(ch.id, { ...ch, guild_id: guild.id });
@@ -2225,11 +2181,9 @@ function onGuildCreate(guild) {
         console.log(`${LOG} 🏠 Сервер ${guild.name || guild.id}: ${chCount} каналов закэшировано.`);
     } else {
         console.log(`${LOG} 🏠 Сервер ${guild.name || guild.id}: получен (каналы придут отдельно).`);
-        // In selfbot mode with lazy guilds, request guild subscription
         if (!IS_BOT_TOKEN) requestLazyGuild(guild.id);
     }
 
-    // In selfbot mode, subscribe to ticket category so we receive MESSAGE_CREATE events
     if (!IS_BOT_TOKEN) subscribeToTicketChannels(guild.id);
 
     scanExistingTickets();
@@ -2243,24 +2197,21 @@ function onChannelCreate(data) {
     if (guildId !== config.guildId) return;
     data.guild_id = guildId;
     channelCache.set(data.id, data);
-    console.log(`${LOG} \u{1F4E2} CHANNEL_CREATE: #${data.name || data.id} (parent: ${data.parent_id || 'none'})`);
+    console.log(`${LOG} 📢 CHANNEL_CREATE: #${data.name || data.id} (parent: ${data.parent_id || 'none'})`);
 
     if (activeTickets.has(data.id)) return;
     const record = registerTicket(data);
     if (!record) return;
     if (botPaused) { console.log(`${LOG} ⏸ Пауза — пропускаем уведомление о новом тикете.`); return; }
 
-    // Dedup: prevent sending notification twice for same ticket
     if (notifiedTicketIds.has(data.id)) {
         console.log(`${LOG} ⚠️ Дубль CHANNEL_CREATE для #${data.name}, пропускаем.`);
         return;
     }
     notifiedTicketIds.add(data.id);
-    // Clean up dedup set after 60s
     setTimeout(() => notifiedTicketIds.delete(data.id), 60_000);
 
     console.log(`${LOG} ✅ Новый тикет (CHANNEL_CREATE): #${data.name}`);
-    // Subscribe to new ticket channel in selfbot mode
     if (!IS_BOT_TOKEN) {
         subscribeToSingleChannel(config.guildId, data.id);
     }
@@ -2345,7 +2296,6 @@ function onThreadCreate(data) {
 
     if (data.newly_created) {
         if (botPaused) { console.log(`${LOG} ⏸ Пауза — пропускаем уведомление о новом треде.`); return; }
-        // Dedup: prevent sending notification twice for same ticket
         if (notifiedTicketIds.has(data.id)) {
             console.log(`${LOG} ⚠️ Дубль THREAD_CREATE для #${data.name}, пропускаем.`);
             return;
@@ -2377,67 +2327,56 @@ function onThreadListSync(data) {
     }
 }
 
+// ── ★ ИСПРАВЛЕННАЯ ФУНКЦИЯ onMessageCreate ★ ─────────────────
 function onMessageCreate(data) {
-    // Resolve guild_id: may be missing in selfbot mode
     const guildId = data.guild_id || channelCache.get(data.channel_id)?.guild_id;
-
     const channelId = data.channel_id;
 
-    // Auto-reply in specific channels — smart template engine, works across ALL servers
+    // Auto-reply — works across ALL servers (before guild filter)
     if (config.autoReplies && data.content && data.author && !data.author.bot) {
-        // Allow replies even to own messages (for testing)
         const normalized = data.content.toLowerCase().replace(/[?!.,;:()]/g, ' ').replace(/\s+/g, ' ').trim();
         for (const rule of config.autoReplies) {
             if (!rule.enabled) continue;
             if (rule.channelId !== channelId) continue;
 
-            // --- excludeAny: if any matches → skip ---
             if (rule.excludeAny && rule.excludeAny.some(ex => normalized.includes(ex.toLowerCase()))) {
                 continue;
             }
 
             let matched = false;
 
-                // --- includeAll: every group must have at least one match (AND of ORs) ---
-                if (rule.includeAll && Array.isArray(rule.includeAll)) {
-                    matched = rule.includeAll.every(group => {
-                        if (Array.isArray(group)) return group.some(p => normalized.includes(p.toLowerCase()));
-                        return normalized.includes(String(group).toLowerCase());
-                    });
-                }
-                // --- includeAny: at least one pattern matches (OR) ---
-                else if (rule.includeAny && Array.isArray(rule.includeAny)) {
-                    matched = rule.includeAny.some(p => normalized.includes(p.toLowerCase()));
-                }
-                // --- legacy: patterns (simple OR) ---
-                else if (rule.patterns && Array.isArray(rule.patterns)) {
-                    matched = rule.patterns.some(p => normalized.includes(p.toLowerCase()));
-                }
+            if (rule.includeAll && Array.isArray(rule.includeAll)) {
+                matched = rule.includeAll.every(group => {
+                    if (Array.isArray(group)) return group.some(p => normalized.includes(p.toLowerCase()));
+                    return normalized.includes(String(group).toLowerCase());
+                });
+            } else if (rule.includeAny && Array.isArray(rule.includeAny)) {
+                matched = rule.includeAny.some(p => normalized.includes(p.toLowerCase()));
+            } else if (rule.patterns && Array.isArray(rule.patterns)) {
+                matched = rule.patterns.some(p => normalized.includes(p.toLowerCase()));
+            }
 
-                if (matched) {
-                    const ruleName = rule.name || 'unnamed';
-                    setTimeout(async () => {
-                        try {
-                            await sendDiscordMessage(channelId, rule.response, GATEWAY_TOKEN, data.id);
-                            console.log(`${LOG} 🤖 Авто-ответ [${ruleName}] в #${channelId}: ${rule.response.slice(0, 50)}`);
-                        } catch (e) {
-                            console.error(`${LOG} ❌ Ошибка авто-ответа [${ruleName}]:`, e.message);
-                        }
-                    }, 1000);
-                    break;
-                }
+            if (matched) {
+                const ruleName = rule.name || 'unnamed';
+                setTimeout(async () => {
+                    try {
+                        await sendDiscordMessage(channelId, rule.response, GATEWAY_TOKEN, data.id);
+                        console.log(`${LOG} 🤖 Авто-ответ [${ruleName}] в #${channelId}: ${rule.response.slice(0, 50)}`);
+                    } catch (e) {
+                        console.error(`${LOG} ❌ Ошибка авто-ответа [${ruleName}]:`, e.message);
+                    }
+                }, 1000);
+                break;
             }
         }
     }
+    // ← закрывает if(autoReplies) — НЕТ лишней скобки здесь!
 
     if (guildId !== config.guildId) return;
 
     let channel = channelCache.get(channelId);
 
-    // If channel not in cache, try to construct minimal info
     if (!channel) {
-        // In selfbot mode channels may not be in cache yet
-        // We can only process if this is a known active ticket
         if (activeTickets.has(channelId)) {
             channel = { id: channelId, name: activeTickets.get(channelId).channelName, guild_id: guildId, parent_id: config.ticketsCategoryId, type: 0 };
             channelCache.set(channelId, channel);
@@ -2473,33 +2412,28 @@ function onMessageCreate(data) {
     const record = activeTickets.get(channelId);
     if (!record) return;
 
-    // Log ticket messages only
     const who = author?.username || 'unknown';
     console.log(`${LOG} 💬 #${record.channelName} от ${who}: ${(data.content || '').slice(0, 60)}`);
 
     const staffSent = isStaffFromMember(data.member);
 
-    // Track opener
     if (!staffSent && !record.openerId) {
         record.openerId = author.id || '';
         record.openerUsername = author.username || '';
         markDirty();
     }
 
-    // Track first staff reply
     if (staffSent && record.firstStaffReplyAt === null) {
         record.firstStaffReplyAt = Date.now();
         markDirty();
     }
 
-    // Track last message
     if (data.content) {
         record.lastMessage = (staffSent ? '[Саппорт] ' : '') + data.content;
         record.lastMessageAt = Date.now();
         markDirty();
     }
 
-    // Forum mode: relay all messages
     if (config.forumMode) {
         const displayName = getMemberDisplayName(data.member, author);
         const rawUsername = author?.username || 'Неизвестно';
@@ -2517,7 +2451,6 @@ function onMessageCreate(data) {
         })();
     }
 
-    // Staff message → start activity timer
     if (staffSent) {
         record.lastStaffMessageAt = Date.now();
         record.waitingForReply = true;
@@ -2528,11 +2461,8 @@ function onMessageCreate(data) {
         return;
     }
 
-    // Player message → clear timer
     if (noReplyTimers.has(channelId)) clearNoReplyTimer(channelId);
 
-    // ── Ticket Chat: forward player messages to ALL users who have this ticket selected ──
-    // Loop protection: ignore our own messages
     if (!sentByBot.has(data.id) && !(selfUserId && author.id === selfUserId)) {
         for (const user of users) {
             const uState = getUserState(user.tgChatId).ticketChat;
@@ -2546,7 +2476,6 @@ function onMessageCreate(data) {
         }
     }
 
-    // First user message notification
     if (botPaused) return;
     if (!config.includeFirstUserMessage) return;
     if (notifiedFirstMessage.has(channelId)) return;
@@ -2585,15 +2514,13 @@ async function pollTelegram() {
         for (const update of updates) {
             const uid = update.update_id;
             pollingOffset = uid + 1;
-            // Dedup: skip already processed updates
             if (processedUpdateIds.has(uid)) continue;
             processedUpdateIds.add(uid);
-            // Keep set small — remove old entries
             if (processedUpdateIds.size > 100) {
                 const arr = [...processedUpdateIds];
                 for (let i = 0; i < arr.length - 50; i++) processedUpdateIds.delete(arr[i]);
             }
-            // Handle callback_query (inline buttons)
+
             if (update.callback_query) {
                 const cbq = update.callback_query;
                 const cbChatId = String(cbq?.message?.chat?.id || '');
@@ -2611,9 +2538,7 @@ async function pollTelegram() {
                     const result = await handleSmenoff(cbChatId);
                     await tgAnswerCallbackQuery(cbq.id, result.startsWith('✅') ? 'Закрыто!' : 'Ошибка');
                     await tgEditMessageText(cbChatId, cbq.message.message_id, result);
-                }
-                // ── Ticket Chat callbacks ──
-                else if (cbData.startsWith('tsel_')) {
+                } else if (cbData.startsWith('tsel_')) {
                     const chId = cbData.slice(5);
                     await handleSelectTicket(chId, cbq.id, cbq.message.message_id, cbChatId);
                 } else if (cbData.startsWith('tpage_')) {
@@ -2623,9 +2548,7 @@ async function pollTelegram() {
                     await tgEditMessageText(cbChatId, cbq.message.message_id, msg.text, msg.markup);
                 } else if (cbData === 'tunselect') {
                     await handleUnselectTicket(cbq.id, cbq.message.message_id, cbChatId);
-                }
-                // ── Bind callbacks ──
-                else if (cbData.startsWith('bind_')) {
+                } else if (cbData.startsWith('bind_')) {
                     const bindName = cbData.slice(5);
                     const uState = getUserState(cbChatId).ticketChat;
                     if (!uState.activeTicketId) {
@@ -2656,7 +2579,6 @@ async function pollTelegram() {
             if (!allTgChatIds.has(chatId)) continue;
             const token = getDiscordToken(chatId);
 
-            // Handle reply to bot message → send to Discord ticket
             const replyTo = update?.message?.reply_to_message?.message_id;
             if (replyTo && text && !text.startsWith('/')) {
                 enqueueToUser(chatId, { text: await handleReplyToTicket(replyTo, text, token) });
@@ -2713,7 +2635,6 @@ async function pollTelegram() {
                 savePerUserState();
                 enqueueToUser(chatId, { text: '🔄 Состояние смены сброшено. Можно делать /smena заново.' });
             }
-            // ── History, Binds, Greet commands ──
             else if (text === '/history' || text.startsWith('/history ')) {
                 const histMsgs = await handleHistory(chatId);
                 for (const m of histMsgs) enqueueToUser(chatId, { text: m.text, replyMarkup: m.markup });
@@ -2743,7 +2664,6 @@ async function pollTelegram() {
                 const greetArgs = text.startsWith('/greet ') ? text.slice(7) : '';
                 enqueueToUser(chatId, { text: handleGreet(greetArgs) });
             }
-            // Generic / command → bind search (before free-text relay)
             else if (text.startsWith('/') && !text.startsWith('//')) {
                 const bindQuery = text.slice(1).split(/\s+/)[0].toLowerCase().trim();
                 if (bindQuery.length >= 2 && config.binds) {
@@ -2753,7 +2673,6 @@ async function pollTelegram() {
                     }
                 }
             }
-            // Free-text relay to active ticket (no command, no reply)
             else if (!text.startsWith('/') && getUserState(chatId).ticketChat.activeTicketId && text.trim()) {
                 const result = await handleSendToTicket(text, chatId);
                 enqueueToUser(chatId, { text: result.text, replyMarkup: result.markup });
@@ -2811,7 +2730,7 @@ function handleGatewayMessage(msg) {
     if (s !== null && s !== undefined) seq = s;
 
     switch (op) {
-        case 10: // Hello
+        case 10:
             startHeartbeat(d.heartbeat_interval);
             if (sessionId) {
                 sendResume();
@@ -2819,17 +2738,17 @@ function handleGatewayMessage(msg) {
                 sendIdentify();
             }
             break;
-        case 11: // Heartbeat ACK
+        case 11:
             receivedAck = true;
             break;
-        case 0: // Dispatch
+        case 0:
             handleDispatch(t, d);
             break;
-        case 7: // Reconnect
+        case 7:
             console.log(`${LOG} 🔄 Сервер запросил переподключение.`);
             ws.close(4000);
             break;
-        case 9: // Invalid Session
+        case 9:
             console.log(`${LOG} ⚠️ Невалидная сессия, переидентификация...`);
             sessionId = null;
             resumeGatewayUrl = null;
@@ -2846,17 +2765,14 @@ function handleDispatch(event, data) {
             gatewayReady = true;
             selfUserId = data.user.id;
             console.log(`${LOG} ✅ Авторизован как ${data.user.username} (${data.user.id})`);
-            // Start Telegram polling — ensure only one chain
             if (!pollingTimer && !pollingRunning) {
                 schedulePolling();
                 console.log(`${LOG} 📡 Telegram-поллинг запущен.`);
             }
-            // In selfbot mode, READY includes guilds (often as unavailable stubs)
             let foundTarget = false;
             const autoReplyGuildIds = getAutoReplyGuildIds();
             if (data.guilds && Array.isArray(data.guilds)) {
                 for (const g of data.guilds) {
-                    // Handle target guild
                     if (g.id === config.guildId) {
                         if (g.channels || g.name) {
                             console.log(`${LOG} 🏠 Сервер найден в READY payload.`);
@@ -2867,7 +2783,6 @@ function handleDispatch(event, data) {
                         }
                         foundTarget = true;
                     }
-                    // Handle autoReply guilds (subscribe to their channels)
                     if (autoReplyGuildIds.has(g.id)) {
                         console.log(`${LOG} 🤖 AutoReply сервер ${g.name || g.id} найден в READY.`);
                         onGuildCreate(g);
@@ -2881,7 +2796,6 @@ function handleDispatch(event, data) {
         }
         case 'RESUMED':
             console.log(`${LOG} ✅ Сессия восстановлена.`);
-            // Re-subscribe to ticket channels after resume (op 14 state is lost)
             if (!IS_BOT_TOKEN) {
                 const catId = config.ticketsCategoryId;
                 if (catId) {
@@ -2894,7 +2808,6 @@ function handleDispatch(event, data) {
                     }
                     if (chIds.length > 0) sendLazyRequest(config.guildId, chIds);
                 }
-                // Re-subscribe to autoReply channels on other guilds
                 for (const [arGuildId, arChIds] of getAutoReplyGuildChannels()) {
                     if (arGuildId !== config.guildId && arChIds.size > 0) {
                         sendLazyRequest(arGuildId, [...arChIds]);
@@ -2908,13 +2821,11 @@ function handleDispatch(event, data) {
             } else {
                 onGuildCreate(data);
             }
-            // Always try to subscribe to autoReply channels (even if guild was handled)
             if (!IS_BOT_TOKEN && getAutoReplyGuildIds().has(data.id)) {
                 subscribeToAutoReplyChannels(data.id);
             }
             break;
         case 'READY_SUPPLEMENTAL':
-            // Selfbot receives this with merged_members, etc. — ignore but log
             console.log(`${LOG} 📦 READY_SUPPLEMENTAL получен.`);
             break;
         case 'MESSAGE_CREATE':
@@ -2942,15 +2853,13 @@ function sendIdentify() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const payload = IS_BOT_TOKEN
         ? {
-            // Bot mode — requires intents
             token: GATEWAY_TOKEN,
-            intents: 33283, // GUILDS(1) | GUILD_MEMBERS(2) | GUILD_MESSAGES(512) | MESSAGE_CONTENT(32768)
+            intents: 33283,
             properties: { os: 'linux', browser: 'ticket-notifier', device: 'ticket-notifier' },
             compress: false,
             large_threshold: 250,
         }
         : {
-            // User token (selfbot) mode — no intents field
             token: GATEWAY_TOKEN,
             properties: { os: 'Windows', browser: 'Chrome', device: '' },
             presence: { status: 'online', activities: [], since: 0, afk: false },
@@ -2975,7 +2884,6 @@ function sendResume() {
 function startHeartbeat(intervalMs) {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     receivedAck = true;
-    // First heartbeat with jitter
     const jitter = Math.floor(intervalMs * Math.random());
     setTimeout(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -3026,7 +2934,6 @@ async function main() {
     connectGateway();
     scheduleShiftReminder();
 
-    // Graceful shutdown
     const shutdown = () => {
         console.log(`${LOG} 🛑 Остановка...`);
         stopPolling();
