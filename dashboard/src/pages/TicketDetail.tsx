@@ -60,19 +60,51 @@ export default function TicketDetail() {
         if (!socket || !id) return;
         const handleNewMessage = (data: any) => {
             if (!data.channelId || data.channelId === id) {
-                queryClient.invalidateQueries({ queryKey: ['tickets', id, 'messages'] });
+                if (data.message) {
+                    queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
+                        if (!old || !old.messages) return old;
+                        if (old.messages.some((m: any) => m.id === data.message.id)) return old;
+                        return { ...old, messages: [...old.messages, data.message] };
+                    });
+                } else {
+                    queryClient.invalidateQueries({ queryKey: ['tickets', id, 'messages'] });
+                }
             }
             queryClient.invalidateQueries({ queryKey: ['tickets'] });
         };
+
+        const handleUpdateMessage = (data: any) => {
+            if (data.channelId === id && data.message) {
+                queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
+                    if (!old || !old.messages) return old;
+                    return { ...old, messages: old.messages.map((m: any) => m.id === data.message.id ? data.message : m) };
+                });
+            }
+        };
+
+        const handleDeleteMessage = (data: any) => {
+            if (data.channelId === id && data.messageId) {
+                queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
+                    if (!old || !old.messages) return old;
+                    return { ...old, messages: old.messages.filter((m: any) => m.id !== data.messageId) };
+                });
+            }
+        };
+
         const handleTicketUpdated = () => {
             queryClient.invalidateQueries({ queryKey: ['tickets'] });
         };
+
         socket.on('ticket:message', handleNewMessage);
+        socket.on('ticket:message_update', handleUpdateMessage);
+        socket.on('ticket:message_delete', handleDeleteMessage);
         socket.on('ticket:updated', handleTicketUpdated);
         socket.on('ticket:new', handleTicketUpdated);
         socket.on('ticket:closed', handleTicketUpdated);
         return () => {
             socket.off('ticket:message', handleNewMessage);
+            socket.off('ticket:message_update', handleUpdateMessage);
+            socket.off('ticket:message_delete', handleDeleteMessage);
             socket.off('ticket:updated', handleTicketUpdated);
             socket.off('ticket:new', handleTicketUpdated);
             socket.off('ticket:closed', handleTicketUpdated);
