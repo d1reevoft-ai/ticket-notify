@@ -378,32 +378,36 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                 />
                             )}
                         </div>
-                        
-                        <div className="px-5 pb-5 relative bg-card flex-1 overflow-y-auto custom-scrollbar">
-                            {/* Avatar Float */}
-                            <div className="absolute -top-[40px] left-4 p-[3px] bg-card rounded-full z-20">
+
+                        {/* Avatar + Name (non-scrollable) */}
+                        <div className="relative bg-card px-5 pt-0 pb-3 shrink-0">
+                            {/* Avatar overlapping banner */}
+                            <div className="absolute -top-[38px] left-4 p-[3px] bg-card rounded-full" style={{ zIndex: 2 }}>
                                 <div className="relative">
                                     <img 
                                         src={selectedProfile.member.avatar} 
                                         alt={selectedProfile.member.displayName}
-                                        className="w-[76px] h-[76px] rounded-full object-cover bg-secondary"
+                                        className="w-[72px] h-[72px] rounded-full object-cover bg-secondary"
                                     />
                                     <span 
-                                        className={`absolute bottom-0 right-0 w-[20px] h-[20px] rounded-full border-[3px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
+                                        className={`absolute bottom-0 right-0 w-[18px] h-[18px] rounded-full border-[3px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
                                     />
                                 </div>
                             </div>
-                            
-                            {/* Info */}
-                            <div className="pt-11">
-                                <h3 className="text-[20px] font-bold leading-tight flex items-center gap-2 break-words">
+
+                            <div className="pt-10">
+                                <h3 className="text-lg font-bold leading-tight break-words">
                                     {selectedProfile.member.displayName}
                                 </h3>
-                                <p className="text-sm font-medium text-muted-foreground mt-0.5 mb-4 break-words">
+                                <p className="text-sm font-medium text-muted-foreground mt-0.5 break-words">
                                     {selectedProfile.member.username !== selectedProfile.member.displayName ? String(selectedProfile.member.username) : String(selectedProfile.member.id)}
                                 </p>
-                                
-                                <div className="space-y-4">
+                            </div>
+                        </div>
+
+                        {/* Scrollable content */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-5 bg-card border-t border-border/30">
+                            <div className="space-y-4 pt-3">
                                     {/* Highest Role Badge */}
                                     <div>
                                         <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">Высшая Роль</div>
@@ -476,7 +480,6 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                             </p>
                                         </div>
                                     ) : null}
-                                </div>
                             </div>
                         </div>
                     </motion.div>
