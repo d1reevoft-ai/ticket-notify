@@ -577,6 +577,91 @@ class Bot {
         } catch { return []; }
     }
 
+    async closeTicketViaButton(channelId) {
+        this.log(`🔒 Attempting to close ticket ${channelId} via button click...`);
+        const messages = await this.fetchChannelMessages(channelId, 50);
+        if (!messages || messages.length === 0) {
+            return { ok: false, error: 'Не удалось загрузить сообщения канала' };
+        }
+
+        // Find a message with a "Закрыть" button component
+        let closeButton = null;
+        let targetMessage = null;
+        for (const msg of messages) {
+            if (!msg.components || !Array.isArray(msg.components)) continue;
+            for (const row of msg.components) {
+                if (!row.components || !Array.isArray(row.components)) continue;
+                for (const comp of row.components) {
+                    if (comp.type === 2 && comp.label && /закрыть/i.test(comp.label) && comp.custom_id) {
+                        closeButton = comp;
+                        targetMessage = msg;
+                        break;
+                    }
+                }
+                if (closeButton) break;
+            }
+            if (closeButton) break;
+        }
+
+        if (!closeButton || !targetMessage) {
+            return { ok: false, error: 'Кнопка "Закрыть тикет" не найдена в канале' };
+        }
+
+        const applicationId = targetMessage.author?.id || targetMessage.application_id || '';
+        if (!applicationId) {
+            return { ok: false, error: 'Не удалось определить application_id бота' };
+        }
+
+        this.log(`🔒 Found close button: custom_id="${closeButton.custom_id}" on message ${targetMessage.id} by app ${applicationId}`);
+
+        // Send interaction (type 3 = MESSAGE_COMPONENT)
+        const authHeader = this.getDiscordAuthorizationHeader();
+        const guildId = this.channelCache.get(channelId)?.guild_id || this.config.guildId || '';
+        const nonce = String(BigInt(Date.now()) * 1000000n + BigInt(Math.floor(Math.random() * 1000000)));
+        const payload = {
+            type: 3,
+            nonce,
+            guild_id: guildId,
+            channel_id: channelId,
+            message_flags: 0,
+            message_id: targetMessage.id,
+            application_id: applicationId,
+            session_id: require('crypto').randomUUID(),
+            data: {
+                component_type: 2,
+                custom_id: closeButton.custom_id,
+            },
+        };
+
+        try {
+            const url = 'https://discord.com/api/v9/interactions';
+            const body = JSON.stringify(payload);
+            const result = await new Promise((resolve, reject) => {
+                const u = new URL(url);
+                const req = https.request({
+                    hostname: u.hostname, path: u.pathname, method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' }
+                }, res => {
+                    let chunks = ''; res.on('data', c => chunks += c);
+                    res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
+                });
+                req.on('error', reject); req.write(body); req.end();
+            });
+
+            if (result.ok) {
+                this.log(`✅ Close button clicked successfully for ${channelId}`);
+                this.addLog('ticket', `Тикет ${channelId} закрыт через кнопку`);
+                return { ok: true };
+            } else {
+                this.log(`❌ Close button click failed: ${result.status} ${result.body?.slice(0, 200)}`);
+                return { ok: false, error: `Discord API ошибка: ${result.status}` };
+            }
+        } catch (e) {
+            this.log(`❌ Close button click error: ${e.message}`);
+            return { ok: false, error: e.message };
+        }
+    }
+
     // ═══════════════════════════════════════════════════════
     //  TELEGRAM QUEUE
     // ═══════════════════════════════════════════════════════
