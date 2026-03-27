@@ -1199,25 +1199,50 @@ function enqueueNeuroTelegramNotification(bot, { channelId, authorUsername, ques
 }
 
 function normalizePresenceEntry(presence) {
-    if (!presence) return { status: 'offline', activities: [], customStatus: null, activityText: null, clientStatus: null };
+    if (!presence) return { status: 'offline', activities: [], customStatus: null, activityText: null, activityObj: null, clientStatus: null };
     if (typeof presence === 'string') {
-        return { status: presence || 'offline', activities: [], customStatus: null, activityText: null, clientStatus: null };
+        return { status: presence || 'offline', activities: [], customStatus: null, activityText: null, activityObj: null, clientStatus: null };
     }
 
     const status = presence.status || 'offline';
     const activities = Array.isArray(presence.activities) ? presence.activities : [];
     const customActivity = activities.find(a => Number(a?.type) === 4) || null;
-    const primaryActivity = activities.find(a => Number(a?.type) !== 4) || null;
-    const customStatus = customActivity?.state || customActivity?.name || null;
+    const primaryActivity = activities.find(a => Number(a?.type) !== 4 && Number(a?.type) !== 3) || null; // skip CustomStatus and maybe streaming? No, we can include streaming. Let's just say != 4
+    
+    // Custom status parsing
+    let customStatus = null;
+    if (customActivity) {
+        if (customActivity.emoji) {
+            customStatus = `${customActivity.emoji.id ? `:${customActivity.emoji.name}:` : customActivity.emoji.name} ${customActivity.state || ''}`.trim();
+        } else {
+            customStatus = customActivity.state || customActivity.name || null;
+        }
+    }
+
     const activityText = primaryActivity
         ? [primaryActivity.name, primaryActivity.details, primaryActivity.state].filter(Boolean).join(' - ')
         : null;
 
+    let activityObj = null;
+    if (primaryActivity) {
+        activityObj = {
+            name: primaryActivity.name,
+            type: primaryActivity.type,
+            details: primaryActivity.details || null,
+            state: primaryActivity.state || null,
+            application_id: primaryActivity.application_id || null,
+            assets: primaryActivity.assets || null,
+            timestamps: primaryActivity.timestamps || null,
+            sync_id: primaryActivity.sync_id || null, // useful for spotify
+        };
+    }
+
     return {
         status,
         activities,
-        customStatus: customStatus ? String(customStatus).slice(0, 120) : null,
-        activityText: activityText ? String(activityText).slice(0, 120) : null,
+        customStatus: customStatus ? String(customStatus).slice(0, 150) : null,
+        activityText: activityText ? String(activityText).slice(0, 150) : null,
+        activityObj, // Rich presence object
         clientStatus: presence.client_status || null,
     };
 }
@@ -2393,8 +2418,8 @@ function requestDashboardMembersSidebar(bot, guildId, ticketsCategoryId, channel
             d: {
                 guild_id: guildId,
                 typing: true,
-                threads: false,
-                activities: false,
+                threads: true,
+                activities: true,
                 members: [],
                 channels,
             }

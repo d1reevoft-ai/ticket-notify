@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchMembers } from '../api/stats';
+import { fetchMembers, fetchMemberProfile } from '../api/stats';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, ChevronDown, ChevronRight, PanelRightClose, Copy, Check } from 'lucide-react';
+import { Users, ChevronDown, ChevronRight, PanelRightClose, Copy, Check, Search } from 'lucide-react';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket';
 
@@ -13,6 +13,7 @@ type Member = {
     status: string;
     customStatus?: string | null;
     activityText?: string | null;
+    activityObj?: any;
     nameColor?: string | null;
 };
 
@@ -67,6 +68,7 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
     });
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [autoCollapsedApplied, setAutoCollapsedApplied] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; member: Member } | null>(null);
@@ -76,18 +78,35 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
     const [selectedProfile, setSelectedProfile] = useState<{ member: Member; y: number; groupName: string } | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
+    // Fetch dynamic profile (for bio / banner) when popover is open
+    const { data: profileObj, isFetching: profileFetching } = useQuery({
+        queryKey: ['profile', selectedProfile?.member.id],
+        queryFn: () => fetchMemberProfile(selectedProfile!.member.id),
+        enabled: !!selectedProfile?.member.id,
+        staleTime: 60000, // cache 1 min
+    });
+
     const preparedGroups = useMemo(() => {
         if (!groups || !Array.isArray(groups)) return [];
+        const search = searchQuery.toLowerCase().trim();
 
-        return groups.map(group => ({
-            ...group,
-            members: Array.isArray(group.members) ? [...group.members].sort((a, b) => {
+        return groups.map(group => {
+            const filteredMembers = Array.isArray(group.members) ? [...group.members].filter(m => {
+                if (!search) return true;
+                return (m.displayName || '').toLowerCase().includes(search) || 
+                       (m.username || '').toLowerCase().includes(search);
+            }).sort((a, b) => {
                 const statusDiff = STATUS_ORDER[normalizeStatus(a.status)] - STATUS_ORDER[normalizeStatus(b.status)];
                 if (statusDiff !== 0) return statusDiff;
                 return (a.displayName || a.username || '').localeCompare(b.displayName || b.username || '', 'ru');
-            }) : []
-        })).sort((a, b) => b.position - a.position);
-    }, [groups]);
+            }) : [];
+
+            return {
+                ...group,
+                members: filteredMembers
+            };
+        }).filter(group => group.members.length > 0).sort((a, b) => b.position - a.position);
+    }, [groups, searchQuery]);
 
     const toggle = (roleId: string) => {
         setCollapsed(prev => ({ ...prev, [roleId]: !prev[roleId] }));
@@ -149,11 +168,36 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
         }
     };
 
-    const totalMembers = preparedGroups.reduce((sum, group) => sum + group.members.length, 0);
+    const totalMembers = useMemo(() => {
+        if (!groups) return 0;
+        return groups.reduce((sum, g) => sum + (g.members?.length || 0), 0);
+    }, [groups]);
+
+    const renderActivityImage = (act: any) => {
+        if (!act?.assets?.large_image && !act?.assets?.small_image) return null;
+        const imgKey = act.assets.large_image || act.assets.small_image;
+        if (!imgKey) return null;
+        
+        let url = `https://cdn.discordapp.com/app-assets/${act.application_id}/${imgKey}.png`;
+        if (imgKey.startsWith('spotify:')) {
+            url = `https://i.scdn.co/image/${imgKey.replace('spotify:', '')}`;
+        }
+        
+        return (
+            <div className="relative shrink-0">
+                <img 
+                    src={url} 
+                    alt="Activity" 
+                    className="w-12 h-12 rounded-[10px] object-cover shadow-sm bg-secondary/50 border border-border/20"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+            </div>
+        );
+    };
 
     return (
         <div ref={panelRef} className="member-panel-shell relative w-72 shrink-0 bg-card border-l border-border h-full overflow-y-auto custom-scrollbar">
-            <div className="sticky top-0 bg-card/95 backdrop-blur-sm z-10 px-4 py-3 border-b border-border">
+            <div className="sticky top-0 bg-card/95 backdrop-blur-sm z-10 px-4 py-3 border-b border-border space-y-3">
                 <div className="flex items-center gap-2.5 text-sm font-rajdhani font-bold uppercase tracking-[0.08em] text-muted-foreground">
                     <Users className="w-4 h-4" />
                     <span>Участники</span>
@@ -170,6 +214,16 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                         </button>
                     )}
                 </div>
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input 
+                        type="text" 
+                        placeholder="Поиск участников..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full text-xs bg-secondary/50 border border-border/50 rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring focus:bg-secondary/80 transition-all font-medium text-foreground placeholder:text-muted-foreground/50"
+                    />
+                </div>
             </div>
 
             {isLoading ? (
@@ -185,8 +239,8 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                     ))}
                 </div>
             ) : preparedGroups.length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground">
-                    Участники пока не загружены. Дашборд запрашивает данные с сервера Discord...
+                <div className="p-4 text-sm text-center text-muted-foreground">
+                    {searchQuery ? "По вашему запросу ничего не найдено." : "Участники пока не загружены. Дашборд запрашивает данные с сервера Discord..."}
                 </div>
             ) : (
                 <div className="py-2">
@@ -284,63 +338,125 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                         exit={{ opacity: 0, x: 10, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="fixed right-[290px] w-80 bg-popover/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl overflow-hidden z-50"
+                        className="fixed right-[290px] w-80 bg-popover/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl overflow-hidden z-50 flex flex-col max-h-[85vh]"
                         style={{
-                            top: Math.min(Math.max(20, selectedProfile.y - 100), window.innerHeight - 350)
+                            top: Math.min(Math.max(20, selectedProfile.y - 120), window.innerHeight - 450)
                         }}
                     >
                         {/* Banner */}
                         <div 
-                            className="h-24 w-full"
+                            className="h-[100px] w-full shrink-0 relative transition-colors duration-500 ease-in-out"
                             style={{ 
-                                backgroundColor: selectedProfile.member.nameColor || '#3b82f6',
-                                backgroundImage: `linear-gradient(to bottom, transparent, rgba(0,0,0,0.4))`
+                                backgroundColor: profileObj?.user?.banner_color || selectedProfile.member.nameColor || '#3b82f6',
                             }} 
-                        />
-                        <div className="px-5 pb-5 relative bg-card">
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/40 mix-blend-multiply" />
+                            {profileObj?.user?.banner && (
+                                <img 
+                                    src={`https://cdn.discordapp.com/banners/${selectedProfile.member.id}/${profileObj.user.banner}.png?size=512`} 
+                                    alt="Banner" 
+                                    className="absolute inset-0 w-full h-full object-cover opacity-90 mix-blend-luminosity" 
+                                />
+                            )}
+                        </div>
+                        
+                        <div className="px-5 pb-5 relative bg-card flex-1 overflow-y-auto custom-scrollbar">
                             {/* Avatar Float */}
-                            <div className="absolute -top-12 left-5 p-1.5 bg-card rounded-full">
+                            <div className="absolute -top-[52px] left-5 p-1.5 bg-card rounded-full z-10">
                                 <div className="relative">
                                     <img 
                                         src={selectedProfile.member.avatar} 
                                         alt={selectedProfile.member.displayName}
-                                        className="w-20 h-20 rounded-full object-cover shadow-inner"
+                                        className="w-[84px] h-[84px] rounded-full object-cover shadow-inner bg-secondary"
                                     />
                                     <span 
-                                        className={`absolute bottom-0 right-1 w-5 h-5 rounded-full border-[3px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
+                                        className={`absolute bottom-1 right-1 w-[22px] h-[22px] rounded-full border-[3.5px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
                                     />
                                 </div>
                             </div>
                             
                             {/* Info */}
                             <div className="pt-12">
-                                <h3 className="text-xl font-bold leading-tight flex items-center gap-2">
+                                <h3 className="text-[20px] font-bold leading-tight flex items-center gap-2 break-words">
                                     {selectedProfile.member.displayName}
                                 </h3>
-                                <p className="text-sm text-muted-foreground mt-0.5">
-                                    {selectedProfile.member.username !== selectedProfile.member.displayName ? `@${selectedProfile.member.username}` : selectedProfile.member.id}
+                                <p className="text-sm font-medium text-muted-foreground mt-0.5 mb-4 break-words">
+                                    {selectedProfile.member.username !== selectedProfile.member.displayName ? String(selectedProfile.member.username) : String(selectedProfile.member.id)}
                                 </p>
                                 
-                                <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                                <div className="space-y-4">
+                                    {/* Highest Role Badge */}
                                     <div>
-                                        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Высшая Роль</div>
+                                        <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">Высшая Роль</div>
                                         <div 
-                                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide border border-border bg-secondary/30"
+                                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[6px] text-[11px] font-bold uppercase tracking-wide border border-border bg-secondary/20 shadow-sm"
                                             style={{ color: selectedProfile.member.nameColor || '#fff' }}
                                         >
-                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedProfile.member.nameColor || '#fff' }}/>
+                                            <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: selectedProfile.member.nameColor || '#fff' }}/>
                                             {selectedProfile.groupName}
                                         </div>
                                     </div>
 
-                                    {(selectedProfile.member.customStatus || selectedProfile.member.activityText) && (
+                                    {/* Custom Status */}
+                                    {selectedProfile.member.customStatus && (
                                         <div>
-                                            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Обо мне / Статус</div>
-                                            <p className="text-sm bg-secondary/20 p-2 rounded-md border border-border/40">
-                                                {selectedProfile.member.customStatus || selectedProfile.member.activityText}
+                                            <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">Пользовательский Статус</div>
+                                            <p className="text-[13px] leading-relaxed text-foreground font-medium flex items-start gap-1">
+                                                <span>{selectedProfile.member.customStatus}</span>
                                             </p>
                                         </div>
                                     )}
+
+                                    {/* Rich Presence Activity */}
+                                    {selectedProfile.member.activityObj && (
+                                        <div>
+                                            <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-2 border-b border-border/50 pb-1 w-max">
+                                                {selectedProfile.member.activityObj.name === 'Spotify' ? 'Слушает Spotify' : 'Активность'}
+                                            </div>
+                                            <div className="flex items-center gap-3 bg-secondary/30 p-2.5 rounded-xl border border-border/30">
+                                                {renderActivityImage(selectedProfile.member.activityObj)}
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-[13px] font-bold text-foreground leading-tight truncate">
+                                                        {selectedProfile.member.activityObj.name}
+                                                    </div>
+                                                    {selectedProfile.member.activityObj.details && (
+                                                        <div className="text-[12px] text-muted-foreground truncate mt-0.5">
+                                                            {selectedProfile.member.activityObj.details}
+                                                        </div>
+                                                    )}
+                                                    {selectedProfile.member.activityObj.state && (
+                                                        <div className="text-[12px] text-muted-foreground truncate">
+                                                            {selectedProfile.member.activityObj.state}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Profile Bio */}
+                                    {profileFetching ? (
+                                        <div className="pt-2">
+                                            <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">
+                                                Обо мне
+                                                <div className="w-2.5 h-2.5 border-[1.5px] border-t-transparent border-muted-foreground rounded-full animate-spin" />
+                                            </div>
+                                            <div className="space-y-1.5 opacity-50">
+                                                <div className="h-2 bg-secondary rounded w-full"></div>
+                                                <div className="h-2 bg-secondary rounded w-3/4"></div>
+                                                <div className="h-2 bg-secondary rounded w-1/2"></div>
+                                            </div>
+                                        </div>
+                                    ) : profileObj?.user?.bio ? (
+                                        <div className="pt-2">
+                                            <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">
+                                                Обо мне
+                                            </div>
+                                            <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                                                {profileObj.user.bio}
+                                            </p>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
