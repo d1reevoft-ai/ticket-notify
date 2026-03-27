@@ -667,6 +667,7 @@ class Bot {
     // ═══════════════════════════════════════════════════════
 
     enqueue(item) {
+        if (this.config.telegramEnabled === false) return;
         this.sendQueue.push({ retries: 0, ...item });
         if (!this.queueRunning) this.runQueue();
     }
@@ -1164,6 +1165,7 @@ class Bot {
 
     getSettings() {
         return {
+            telegramEnabled: this.config.telegramEnabled !== false,
             autoGreetEnabled: this.config.autoGreetEnabled,
             autoGreetText: this.config.autoGreetText || '',
             activityCheckMin: this.config.activityCheckMin || 10,
@@ -1191,7 +1193,7 @@ class Bot {
 
     updateSettings(settings) {
         const allowedKeys = [
-            'autoGreetEnabled', 'autoGreetText', 'activityCheckMin', 'closingCheckMin',
+            'telegramEnabled', 'autoGreetEnabled', 'autoGreetText', 'activityCheckMin', 'closingCheckMin',
             'maxMessageLength', 'ticketPrefix', 'closingPhrase', 'forumMode',
             'includeFirstUserMessage', 'notifyOnClose', 'mentionOnHighPriority',
             'pollingIntervalSec', 'rateLimitMs', 'priorityKeywords', 'ticketsCategoryId',
