@@ -116,7 +116,7 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
 
     // Close overlays on outside click
     useEffect(() => {
-        const handleOutsideClick = (e: MouseEvent) => {
+        const handleOutsideClick = () => {
             setContextMenu(null);
             setSelectedProfile(null);
         };
