@@ -106,3 +106,8 @@ export const fetchUserProfile = async (openerId: string): Promise<UserProfileRes
     const { data } = await client.get(`/tickets/user/${openerId}`);
     return data;
 };
+
+export const closeTicket = async (id: string): Promise<{ ok: boolean; error?: string }> => {
+    const { data } = await client.post(`/tickets/${id}/close`);
+    return data;
+};
