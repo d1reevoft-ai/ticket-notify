@@ -146,12 +146,11 @@ function createAuthRoutes(db, tgToken, adminChatId) {
 
         try {
             db.prepare('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, code, expiresAt);
-            const sent = await sendOtpEmail(email, code);
-            if (!sent) throw new Error('Failed to send email');
+            await sendOtpEmail(email, code);
             res.json({ ok: true });
         } catch (err) {
-            console.error('[Auth API] OTP Send Error:', err);
-            res.status(500).json({ error: 'Could not send OTP' });
+            console.error('[Auth API] OTP Send Error:', err.message);
+            res.status(500).json({ error: 'Mail error: ' + (err.message || 'Could not send OTP') });
         }
     });
 
