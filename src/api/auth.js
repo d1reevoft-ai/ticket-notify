@@ -2,6 +2,8 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const https = require('https');
+const { OAuth2Client } = require('google-auth-library');
+const { sendOtpEmail } = require('../email');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ticket-dashboard-secret-key-2026';
 
@@ -130,6 +132,103 @@ function createAuthRoutes(db, tgToken, adminChatId) {
         } catch (error) {
             console.error('[Auth API] Login error:', error);
             res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    
+    // -- OTP Routes --
+    router.post('/otp/send', async (req, res) => {
+        const { email } = req.body;
+        if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
+
+        try {
+            db.prepare('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, code, expiresAt);
+            const sent = await sendOtpEmail(email, code);
+            if (!sent) throw new Error('Failed to send email');
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('[Auth API] OTP Send Error:', err);
+            res.status(500).json({ error: 'Could not send OTP' });
+        }
+    });
+
+    router.post('/otp/verify', async (req, res) => {
+        const { email, code } = req.body;
+        if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+
+        try {
+            // Check code
+            const record = db.prepare('SELECT id, expires_at FROM otp_codes WHERE email = ? AND code = ? ORDER BY id DESC LIMIT 1').get(email, code);
+            if (!record) return res.status(401).json({ error: 'Неверный код' });
+            if (Date.now() > record.expires_at) return res.status(401).json({ error: 'Код истек' });
+
+            // Mark code as used (delete)
+            db.prepare('DELETE FROM otp_codes WHERE id = ?').run(record.id);
+
+            // Find or create user
+            let user = db.prepare('SELECT * FROM users WHERE email = ? OR username = ?').get(email, email);
+            if (!user) {
+                const result = db.prepare(`
+                    INSERT INTO users (username, email, password_hash, role) 
+                    VALUES (?, ?, ?, 'pending')
+                `).run(email, email, 'otp-login', 'pending');
+                user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+                sendTelegramMessage(tgToken, adminChatId, `🔔 <b>Новая регистрация (Email OTP)</b>\nПользователь: <code>${email}</code>\nОжидает подтверждения.`);
+            }
+
+            const role = getEffectiveRole(user);
+            if (role === 'pending') return res.status(403).json({ error: 'Аккаунт ожидает подтверждения администратора' });
+            if (role === 'banned') return res.status(403).json({ error: 'Аккаунт заблокирован' });
+
+            const token = jwt.sign({ userId: user.id, username: user.username, role }, JWT_SECRET, { expiresIn: '7d' });
+            res.json({ token, user: { id: user.id, username: user.username, role } });
+        } catch (err) {
+            console.error('[Auth API] OTP Verify Error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    // -- Google OAuth Route --
+    router.post('/google', async (req, res) => {
+        const { credential } = req.body;
+        if (!credential) return res.status(400).json({ error: 'No credential provided' });
+
+        try {
+            const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+            const ticket = await client.verifyIdToken({
+                idToken: credential,
+                audience: process.env.GOOGLE_CLIENT_ID
+            });
+            const payload = ticket.getPayload();
+            const { email, sub: google_id, name } = payload;
+
+            // Find or create user
+            let user = db.prepare('SELECT * FROM users WHERE google_id = ? OR email = ?').get(google_id, email);
+            if (!user) {
+                const generatedUsername = name ? name.replace(/\s+/g, '_').toLowerCase() + '_' + Math.floor(Math.random()*1000) : email;
+                const result = db.prepare(`
+                    INSERT INTO users (username, email, google_id, password_hash, role) 
+                    VALUES (?, ?, ?, ?, 'pending')
+                `).run(generatedUsername, email, google_id, 'google-login', 'pending');
+                user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+                sendTelegramMessage(tgToken, adminChatId, `🔔 <b>Новая регистрация (Google)</b>\nПользователь: <code>${email}</code>\nОжидает подтверждения.`);
+            } else if (!user.google_id) {
+                // Link google account
+                db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(google_id, user.id);
+            }
+
+            const role = getEffectiveRole(user);
+            if (role === 'pending') return res.status(403).json({ error: 'Аккаунт ожидает подтверждения администратора' });
+            if (role === 'banned') return res.status(403).json({ error: 'Аккаунт заблокирован' });
+
+            const token = jwt.sign({ userId: user.id, username: user.username, role }, JWT_SECRET, { expiresIn: '7d' });
+            res.json({ token, user: { id: user.id, username: user.username, role } });
+        } catch (err) {
+            console.error('[Auth API] Google Auth Error:', err);
+            res.status(401).json({ error: 'Invalid Google token' });
         }
     });
 
