@@ -197,10 +197,11 @@ function createAuthRoutes(db, tgToken, adminChatId) {
         if (!credential) return res.status(400).json({ error: 'No credential provided' });
 
         try {
-            const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+            const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+            const client = new OAuth2Client(clientId);
             const ticket = await client.verifyIdToken({
                 idToken: credential,
-                audience: process.env.GOOGLE_CLIENT_ID
+                audience: clientId
             });
             const payload = ticket.getPayload();
             const { email, sub: google_id, name } = payload;
@@ -228,7 +229,7 @@ function createAuthRoutes(db, tgToken, adminChatId) {
             res.json({ token, user: { id: user.id, username: user.username, role } });
         } catch (err) {
             console.error('[Auth API] Google Auth Error:', err);
-            res.status(401).json({ error: 'Invalid Google token' });
+            res.status(401).json({ error: 'Google Error: ' + (err.message || 'Invalid token') });
         }
     });
 
