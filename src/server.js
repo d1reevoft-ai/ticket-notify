@@ -247,6 +247,26 @@ async function main() {
         }
     });
 
+    // Close a ticket by clicking the close button
+    app.post('/api/tickets/:id/close', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const channelId = req.params.id;
+
+        const record = bot.activeTickets.get(channelId);
+        if (!record) return res.status(404).json({ error: 'Ticket not found' });
+
+        try {
+            const result = await bot.closeTicketViaButton(channelId);
+            if (result.ok) {
+                res.json({ ok: true });
+            } else {
+                res.status(400).json({ ok: false, error: result.error });
+            }
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Get CRM Profile for a specific user (openerId)
     app.get('/api/tickets/user/:openerId', authenticateToken, (req, res) => {
         const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
