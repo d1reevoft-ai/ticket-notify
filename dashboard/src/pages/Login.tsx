@@ -111,13 +111,13 @@ export default function Login() {
                     <div className="flex rounded-lg bg-secondary/50 p-1 mb-6">
                         <button
                             onClick={() => { setMethod('password'); setError(''); }}
-                            className={\`flex-1 py-2 text-sm font-medium rounded-md transition-all \${method === 'password' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}\`}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === 'password' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Пароль
                         </button>
                         <button
                             onClick={() => { setMethod('email'); setError(''); }}
-                            className={\`flex-1 py-2 text-sm font-medium rounded-md transition-all \${method === 'email' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}\`}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === 'email' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Код на Email
                         </button>
@@ -232,7 +232,7 @@ export default function Login() {
                                                 maxLength={6}
                                                 placeholder="6-значный код"
                                                 value={otpCode}
-                                                onChange={(e) => setOtpCode(e.target.value.replace(/\\D/g, ''))}
+                                                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                                                 className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-center tracking-[0.5em] font-mono"
                                                 required
                                             />
