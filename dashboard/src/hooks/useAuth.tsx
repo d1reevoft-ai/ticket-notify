@@ -6,6 +6,9 @@ type AuthContextType = {
     user: any;
     login: (username: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
     register: (username: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+    loginWithGoogle: (credential: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+    sendOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
+    verifyOtp: (email: string, code: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
     logout: () => void;
     loading: boolean;
 };
@@ -68,6 +71,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const loginWithGoogle = async (credential: string) => {
+        try {
+            const { data } = await client.post('/auth/google', { credential });
+            if (data.pending) return { success: false, pending: true };
+            localStorage.setItem('dashboard_token', data.token);
+            setToken(data.token);
+            setUser(data.user);
+            return { success: true };
+        } catch (err: any) {
+            const message = err.response?.data?.error || 'Google login failed';
+            const isPending = message.includes('ожидает') || message.includes('pending');
+            return { success: false, pending: isPending, error: message };
+        }
+    };
+
+    const sendOtp = async (email: string) => {
+        try {
+            await client.post('/auth/otp/send', { email });
+            return { success: true };
+        } catch (err: any) {
+            return { success: false, error: err.response?.data?.error || 'Failed to send OTP' };
+        }
+    };
+
+    const verifyOtp = async (email: string, code: string) => {
+        try {
+            const { data } = await client.post('/auth/otp/verify', { email, code });
+            if (data.pending) return { success: false, pending: true };
+            localStorage.setItem('dashboard_token', data.token);
+            setToken(data.token);
+            setUser(data.user);
+            return { success: true };
+        } catch (err: any) {
+            const message = err.response?.data?.error || 'OTP verification failed';
+            const isPending = message.includes('ожидает') || message.includes('pending');
+            return { success: false, pending: isPending, error: message };
+        }
+    };
+
     const logout = () => {
         localStorage.removeItem('dashboard_token');
         setToken(null);
@@ -75,7 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, login, register, logout, loading }}>
+        <AuthContext.Provider value={{ token, user, login, register, loginWithGoogle, sendOtp, verifyOtp, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );

@@ -172,6 +172,32 @@ function initDb(dataDir) {
         }
     } catch (e) { console.error('[DB] Migration error on users.created_at:', e.message); }
 
+    // Migrate: add email and google_id columns if missing
+    try {
+        const usersInfo = db.pragma('table_info(users)');
+        if (!usersInfo.some(col => col.name === 'email')) {
+            db.exec("ALTER TABLE users ADD COLUMN email TEXT DEFAULT NULL;");
+            console.log('[DB] Migration: email column added.');
+        }
+        if (!usersInfo.some(col => col.name === 'google_id')) {
+            db.exec("ALTER TABLE users ADD COLUMN google_id TEXT DEFAULT NULL;");
+            console.log('[DB] Migration: google_id column added.');
+        }
+    } catch (e) { console.error('[DB] Migration error on users.email/google_id:', e.message); }
+
+    // Create otp_codes table
+    try {
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS otp_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                expires_at INTEGER NOT NULL
+            );
+        `);
+        console.log('[DB] Ensured otp_codes table exists.');
+    } catch (e) { console.error('[DB] Error creating otp_codes table:', e.message); }
+
     // Always ensure owner accounts are admin
     try {
         db.exec("UPDATE users SET role = 'admin' WHERE (id = 1 OR lower(trim(username)) IN ('d1reevo', 'd1reevof')) AND role != 'admin';");
