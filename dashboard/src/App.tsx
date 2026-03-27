@@ -1,5 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { useSocket } from './hooks/useSocket';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import DashboardLayout from './components/DashboardLayout';
 import Login from './pages/Login';
@@ -19,6 +22,31 @@ import AdminPanel from './pages/AdminPanel';
 import Prompt from './pages/Prompt';
 
 export default function App() {
+    const { token, loading } = useAuth();
+    const socket = useSocket();
+    const queryClient = useQueryClient();
+
+    useEffect(() => {
+        if (!socket || !token) return;
+        const invalidateTickets = () => queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        const invalidateClosed = () => queryClient.invalidateQueries({ queryKey: ['closedTickets'] });
+        
+        socket.on('ticket:new', invalidateTickets);
+        socket.on('ticket:closed', () => { invalidateTickets(); invalidateClosed(); });
+        socket.on('ticket:updated', invalidateTickets);
+        
+        // Also listen to member updates globally
+        socket.on('members:updated', () => {
+            queryClient.invalidateQueries({ queryKey: ['members'] });
+        });
+
+        return () => {
+            socket.off('ticket:new', invalidateTickets);
+            socket.off('ticket:closed'); 
+            socket.off('ticket:updated', invalidateTickets);
+            socket.off('members:updated');
+        };
+    }, [socket, token, queryClient]);
     const { token, loading } = useAuth();
 
     if (loading) {

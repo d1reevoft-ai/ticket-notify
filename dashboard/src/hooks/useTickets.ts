@@ -5,7 +5,7 @@ export const useTickets = () => {
     return useQuery({
         queryKey: ['tickets'],
         queryFn: fetchTickets,
-        refetchInterval: 10000,
+        refetchInterval: 60000,
         refetchIntervalInBackground: true,
         staleTime: 5000,
         placeholderData: prev => prev ?? [],
@@ -26,7 +26,6 @@ export const useTicketMessages = (id: string | undefined) => {
         queryKey: ['tickets', id, 'messages'],
         queryFn: () => fetchTicketMessages(id!),
         enabled: !!id,
-        refetchInterval: 15000,
     });
 };
 

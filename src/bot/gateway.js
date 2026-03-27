@@ -1447,6 +1447,27 @@ function emitDashboard(bot, event, payload = {}) {
     try { bot.io.emit(event, payload); } catch { }
 }
 
+function formatDashboardMessage(bot, d) {
+    const DEFAULT_STAFF_ROLES = ['1475932249017946133', '1475961602619478116'];
+    const cfgRoles = Array.isArray(bot.config.staffRoleIds) ? bot.config.staffRoleIds : [];
+    const staffRoleIds = (cfgRoles.length > 0 ? cfgRoles : DEFAULT_STAFF_ROLES).map(String);
+    const selfId = bot.selfUserId ? String(bot.selfUserId) : null;
+    const ownerAliases = new Set(
+        [bot.config.userName]
+            .map(v => String(v || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+    const authorId = String(d.author?.id || '');
+    const authorUsername = String(d.author?.username || '').trim().toLowerCase();
+    const authorGlobal = String(d.author?.global_name || '').trim().toLowerCase();
+    const isSelf = !!selfId && authorId === selfId;
+    const isAliasOwner = ownerAliases.has(authorUsername) || ownerAliases.has(authorGlobal);
+    const hasStaffRole = Array.isArray(d.member?.roles) && d.member.roles.some(r => staffRoleIds.includes(String(r)));
+    const isMine = isSelf || isAliasOwner;
+    const isStaff = isMine || hasStaffRole;
+    return { ...d, _isMine: isMine, _isStaff: isStaff };
+}
+
 function scheduleMembersUpdate(bot) {
     const now = Date.now();
     const throttleMs = 1500;
@@ -2013,7 +2034,7 @@ function handleDispatch(bot, event, d) {
             if (!record) break;
             if (bot.sentByBot.has(d.id)) {
                 // Still emit to dashboard so self-sent messages update in real-time
-                emitDashboard(bot, 'ticket:message', { channelId: d.channel_id, content: d.content });
+                emitDashboard(bot, 'ticket:message', { channelId: d.channel_id, message: formatDashboardMessage(bot, d) });
                 return;
             }
 
@@ -2076,7 +2097,23 @@ function handleDispatch(bot, event, d) {
                 }
             }
             // Emit to dashboard for ALL messages (staff, bot, player) — real-time updates
-            emitDashboard(bot, 'ticket:message', { channelId: d.channel_id, content: d.content });
+            emitDashboard(bot, 'ticket:message', { channelId: d.channel_id, message: formatDashboardMessage(bot, d) });
+            break;
+        }
+
+        case 'MESSAGE_UPDATE': {
+            if (d.guild_id !== guildId) break;
+            const record = bot.activeTickets.get(d.channel_id);
+            if (!record) break;
+            emitDashboard(bot, 'ticket:message_update', { channelId: d.channel_id, message: formatDashboardMessage(bot, d) });
+            break;
+        }
+
+        case 'MESSAGE_DELETE': {
+            if (d.guild_id !== guildId) break;
+            const record = bot.activeTickets.get(d.channel_id);
+            if (!record) break;
+            emitDashboard(bot, 'ticket:message_delete', { channelId: d.channel_id, messageId: d.id });
             break;
         }
 
