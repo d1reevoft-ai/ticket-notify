@@ -7,12 +7,12 @@ const nodemailer = require('nodemailer');
  * @returns {Promise<boolean>}
  */
 async function sendOtpEmail(toEmail, code) {
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const user = (process.env.SMTP_USER || '').trim();
+    const pass = (process.env.SMTP_PASS || '').trim();
 
     if (!user || !pass) {
         console.warn('⚠️ SMTP credentials missing (SMTP_USER, SMTP_PASS). Cannot send email.');
-        return false;
+        throw new Error('SMTP_USER or SMTP_PASS is missing in environment variables');
     }
 
     try {
@@ -44,8 +44,8 @@ async function sendOtpEmail(toEmail, code) {
         console.log(`[Email] OTP sent to ${toEmail}: ${info.messageId}`);
         return true;
     } catch (err) {
-        console.error(`[Email] Error sending OTP to ${toEmail}:`, err);
-        return false;
+        console.error(`[Email] Error sending OTP to ${toEmail}:`, err.message);
+        throw err;
     }
 }
 
