@@ -1100,6 +1100,7 @@ class Bot {
             autoGreetRoleIds: this.config.autoGreetRoleIds || [],
             geminiApiKeys: this.config.geminiApiKeys || [],
             neuroCustomInstructions: this.config.neuroCustomInstructions || [],
+            neuroCustomInstructions: this.config.neuroCustomInstructions || [],
         };
     }
 
@@ -1110,6 +1111,7 @@ class Bot {
             'includeFirstUserMessage', 'notifyOnClose', 'mentionOnHighPriority',
             'pollingIntervalSec', 'rateLimitMs', 'priorityKeywords', 'ticketsCategoryId',
             'shiftChannelId', 'autoGreetAllChannels', 'staffRoleIds', 'autoGreetRoleIds', 'geminiApiKeys',
+            'neuroCustomInstructions',
             'neuroCustomInstructions'
         ];
         const arrayKeysComma = ['priorityKeywords', 'staffRoleIds', 'autoGreetRoleIds'];
@@ -1119,6 +1121,8 @@ class Bot {
             if (allowedKeys.includes(k)) {
                 if (arrayKeysComma.includes(k) && typeof v === 'string') {
                     this.config[k] = v.split(',').map(x => x.trim()).filter(Boolean);
+                } else if (k === 'neuroCustomInstructions' && Array.isArray(v)) {
+                    this.config[k] = v.map(x => String(x).trim()).filter(Boolean);
                 } else if (k === 'neuroCustomInstructions' && Array.isArray(v)) {
                     this.config[k] = v.map(x => String(x).trim()).filter(Boolean);
                 } else if (arrayKeysNewline.includes(k) && typeof v === 'string') {
