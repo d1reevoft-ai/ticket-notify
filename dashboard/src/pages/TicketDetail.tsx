@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary } from '../hooks/useTickets';
+import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary, useCloseTicket } from '../hooks/useTickets';
 import { fetchBinds, fetchSettings } from '../api/stats';
 import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
 import Skeleton from '../components/Skeleton';
 import type { DiscordMessage } from '../api/tickets';
-import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -21,6 +21,8 @@ export default function TicketDetail() {
     const { mutateAsync: sendMessage, isPending } = useSendTicketMessage();
     const { mutateAsync: editMessage, isPending: isEditing } = useEditTicketMessage();
     const { mutateAsync: getSummary, isPending: isSummarizing } = useTicketSummary();
+    const { mutateAsync: doCloseTicket, isPending: isClosing } = useCloseTicket();
+    const navigate = useNavigate();
     const socket = useSocket();
     const queryClient = useQueryClient();
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -36,6 +38,8 @@ export default function TicketDetail() {
     const [editingMsg, setEditingMsg] = useState<DiscordMessage | null>(null);
 
     const [summary, setSummary] = useState<string | null>(null);
+    const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+    const [closeError, setCloseError] = useState<string | null>(null);
 
     const ticket = tickets?.find(t => t.channelId === id);
 
@@ -233,7 +237,47 @@ export default function TicketDetail() {
                                 </>
                             )}
                         </button>
+                        {!showCloseConfirm ? (
+                            <button
+                                onClick={() => { setShowCloseConfirm(true); setCloseError(null); }}
+                                disabled={isClosing}
+                                className="bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 disabled:opacity-50 text-xs font-semibold px-3 min-h-[44px] flex items-center justify-center rounded-lg gap-1.5 transition-colors"
+                            >
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Закрыть</span>
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={async () => {
+                                        if (!id) return;
+                                        try {
+                                            await doCloseTicket({ ticketId: id });
+                                            navigate('/tickets');
+                                        } catch (e: any) {
+                                            setCloseError(e?.response?.data?.error || 'Ошибка');
+                                            setShowCloseConfirm(false);
+                                        }
+                                    }}
+                                    disabled={isClosing}
+                                    className="bg-red-500 text-white hover:bg-red-600 text-xs font-semibold px-3 min-h-[44px] flex items-center justify-center rounded-lg gap-1.5 transition-colors disabled:opacity-50"
+                                >
+                                    {isClosing ? <span className="animate-pulse">Закрытие...</span> : 'Да, закрыть'}
+                                </button>
+                                <button
+                                    onClick={() => setShowCloseConfirm(false)}
+                                    className="bg-secondary/50 text-muted-foreground hover:text-foreground text-xs font-semibold px-3 min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
+                                >
+                                    Отмена
+                                </button>
+                            </div>
+                        )}
                     </div>
+                    {closeError && (
+                        <div className="absolute top-full right-0 mt-1 bg-red-500/10 border border-red-500/20 text-red-500 text-xs px-3 py-2 rounded-lg z-50 whitespace-nowrap">
+                            {closeError}
+                        </div>
+                    )}
                 </div>
 
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar scroll-smooth relative">
