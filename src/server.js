@@ -8,6 +8,9 @@
  * Usage: node src/server.js
  */
 
+// Load environment variables from .env file for local development
+try { require('dotenv').config(); } catch (e) { }
+
 const path = require('path');
 const fs = require('fs');
 const http = require('http');

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, ArrowRight, User, Clock, Mail, Key } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Lock, ArrowRight, User, Clock } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 
 export default function Login() {
@@ -12,21 +12,12 @@ export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
     
     // Auth Hooks
-    const { login, loginWithGoogle, sendOtp, verifyOtp } = useAuth();
+    const { login, loginWithGoogle } = useAuth();
     const navigate = useNavigate();
-
-    // Mode state
-    type LoginMethod = 'password' | 'email';
-    const [method, setMethod] = useState<LoginMethod>('password');
 
     // Password Form State
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-
-    // Email OTP Form State
-    const [email, setEmail] = useState('');
-    const [otpCode, setOtpCode] = useState('');
-    const [otpStep, setOtpStep] = useState<'email' | 'code'>('email');
 
     const handlePasswordSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -44,36 +35,6 @@ export default function Login() {
         setIsLoading(false);
     };
 
-    const handleSendOtp = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email) return;
-        setError('');
-        setIsLoading(true);
-        const result = await sendOtp(email);
-        if (result.success) {
-            setOtpStep('code');
-        } else {
-            setError(result.error || 'Не удалось отправить код');
-        }
-        setIsLoading(false);
-    };
-
-    const handleVerifyOtp = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!otpCode) return;
-        setError('');
-        setIsPending(false);
-        setIsLoading(true);
-        const result = await verifyOtp(email, otpCode);
-        if (result.success) {
-            navigate('/tickets');
-        } else if (result.pending) {
-            setIsPending(true);
-        } else {
-            setError(result.error || 'Неверный код');
-        }
-        setIsLoading(false);
-    };
 
     const handleGoogleSuccess = async (credentialResponse: any) => {
         setError('');
@@ -106,24 +67,6 @@ export default function Login() {
                     <p className="text-muted-foreground mt-2">Войти в панель управления</p>
                 </div>
 
-                {/* Tabs */}
-                {!isPending && (
-                    <div className="flex rounded-lg bg-secondary/50 p-1 mb-6">
-                        <button
-                            onClick={() => { setMethod('password'); setError(''); }}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === 'password' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                            Пароль
-                        </button>
-                        <button
-                            onClick={() => { setMethod('email'); setError(''); }}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === 'email' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                            Код на Email
-                        </button>
-                    </div>
-                )}
-
                 {isPending ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
@@ -146,111 +89,43 @@ export default function Login() {
                         </button>
                     </motion.div>
                 ) : (
-                    <AnimatePresence mode="wait">
-                        {method === 'password' && (
-                            <motion.form 
-                                key="password-form"
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 10 }}
-                                onSubmit={handlePasswordSubmit} 
-                                className="space-y-4"
-                            >
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                    <input
-                                        type="text"
-                                        placeholder="Имя пользователя"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                    <input
-                                        type="password"
-                                        placeholder="Пароль"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    />
-                                </div>
-                                {error && <p className="text-destructive text-sm font-medium">{error}</p>}
+                    <motion.form 
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        onSubmit={handlePasswordSubmit} 
+                        className="space-y-4"
+                    >
+                        <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <input
+                                type="text"
+                                placeholder="Имя пользователя"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                            />
+                        </div>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <input
+                                type="password"
+                                placeholder="Пароль"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                            />
+                        </div>
+                        {error && <p className="text-destructive text-sm font-medium">{error}</p>}
 
-                                <button
-                                    type="submit"
-                                    disabled={isLoading || !username || !password}
-                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                >
-                                    {isLoading ? 'Вход...' : 'Войти'}
-                                    {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
-                                </button>
-                            </motion.form>
-                        )}
-
-                        {method === 'email' && (
-                            <motion.div 
-                                key="email-form"
-                                initial={{ opacity: 0, x: 10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -10 }}
-                            >
-                                {otpStep === 'email' ? (
-                                    <form onSubmit={handleSendOtp} className="space-y-4">
-                                        <div className="relative">
-                                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                            <input
-                                                type="email"
-                                                placeholder="Введите ваш Email"
-                                                value={email}
-                                                onChange={(e) => setEmail(e.target.value)}
-                                                className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                                required
-                                            />
-                                        </div>
-                                        {error && <p className="text-destructive text-sm font-medium">{error}</p>}
-                                        <button
-                                            type="submit"
-                                            disabled={isLoading || !email}
-                                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                        >
-                                            {isLoading ? 'Отправка...' : 'Получить код'}
-                                            {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
-                                        </button>
-                                    </form>
-                                ) : (
-                                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                                        <p className="text-sm text-muted-foreground text-center mb-2">
-                                            Код отправлен на <b>{email}</b>.{' '}
-                                            <button type="button" onClick={() => setOtpStep('email')} className="text-primary hover:underline">Изменить</button>
-                                        </p>
-                                        <div className="relative">
-                                            <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                            <input
-                                                type="text"
-                                                maxLength={6}
-                                                placeholder="6-значный код"
-                                                value={otpCode}
-                                                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                                                className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-center tracking-[0.5em] font-mono"
-                                                required
-                                            />
-                                        </div>
-                                        {error && <p className="text-destructive text-sm font-medium text-center">{error}</p>}
-                                        <button
-                                            type="submit"
-                                            disabled={isLoading || otpCode.length < 6}
-                                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                        >
-                                            {isLoading ? 'Проверка...' : 'Войти'}
-                                            {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
-                                        </button>
-                                    </form>
-                                )}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                        <button
+                            type="submit"
+                            disabled={isLoading || !username || !password}
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                        >
+                            {isLoading ? 'Вход...' : 'Войти'}
+                            {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
+                        </button>
+                    </motion.form>
                 )}
 
                 {!isPending && (
@@ -273,7 +148,7 @@ export default function Login() {
                     </>
                 )}
 
-                {!isPending && method === 'password' && (
+                {!isPending && (
                     <div className="mt-6 text-center">
                         <p className="text-muted-foreground text-sm">
                             Нет аккаунта?{' '}
