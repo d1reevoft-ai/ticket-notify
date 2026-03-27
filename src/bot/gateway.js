@@ -1312,7 +1312,8 @@ function isOp14Enabled(bot) {
         ? bot._gatewayAuthMode
         : (bot?.config?.discordToken ? 'user' : (bot?.config?.discordBotToken ? 'bot' : 'user'));
     if (mode === 'bot') return false;
-    return process.env.ENABLE_SELFBOT_OP14 === '1';
+    // Enable by default for user tokens, since REST /members is blocked for selfbots.
+    return process.env.ENABLE_SELFBOT_OP14 !== '0';
 }
 
 function scheduleMembersSidebarSweep(
