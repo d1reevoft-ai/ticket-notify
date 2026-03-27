@@ -174,7 +174,7 @@ function createAuthRoutes(db, tgToken, adminChatId) {
                 const result = db.prepare(`
                     INSERT INTO users (username, email, password_hash, role) 
                     VALUES (?, ?, ?, 'pending')
-                `).run(email, email, 'otp-login', 'pending');
+                `).run(email, email, 'otp-login');
                 user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
                 sendTelegramMessage(tgToken, adminChatId, `🔔 <b>Новая регистрация (Email OTP)</b>\nПользователь: <code>${email}</code>\nОжидает подтверждения.`);
             }
@@ -213,7 +213,7 @@ function createAuthRoutes(db, tgToken, adminChatId) {
                 const result = db.prepare(`
                     INSERT INTO users (username, email, google_id, password_hash, role) 
                     VALUES (?, ?, ?, ?, 'pending')
-                `).run(generatedUsername, email, google_id, 'google-login', 'pending');
+                `).run(generatedUsername, email, google_id, 'google-login');
                 user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
                 sendTelegramMessage(tgToken, adminChatId, `🔔 <b>Новая регистрация (Google)</b>\nПользователь: <code>${email}</code>\nОжидает подтверждения.`);
             } else if (!user.google_id) {
