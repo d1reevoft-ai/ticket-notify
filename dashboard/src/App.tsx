@@ -47,7 +47,6 @@ export default function App() {
             socket.off('members:updated');
         };
     }, [socket, token, queryClient]);
-    const { token, loading } = useAuth();
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
