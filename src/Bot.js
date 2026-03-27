@@ -1220,6 +1220,17 @@ class Bot {
             }
         }
         this.addLog('settings', 'Настройки обновлены');
+
+        // Dynamically stop/start Telegram polling when toggled
+        if ('telegramEnabled' in settings) {
+            const { startPolling, stopPolling } = require('./bot/telegram');
+            if (this.config.telegramEnabled === false) {
+                stopPolling(this);
+                this.log('Telegram polling stopped via settings');
+            } else {
+                startPolling(this);
+            }
+        }
     }
 
     getAutoReplies() { return this.config.autoReplies || []; }
