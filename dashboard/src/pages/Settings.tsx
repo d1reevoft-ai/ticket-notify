@@ -120,6 +120,7 @@ export default function Settings() {
                 <Toggle label="Уведомление при закрытии" desc="Отправлять уведомление когда тикет закрывается" value={s.notifyOnClose} onChange={v => update('notifyOnClose', v)} />
                 <Toggle label="Упоминание при приоритете" desc="Упоминать при высокоприоритетных тикетах" value={s.mentionOnHighPriority} onChange={v => update('mentionOnHighPriority', v)} />
                 <Toggle label="Форум-режим" desc="Отслеживать тикеты в формате форума (threads)" value={s.forumMode} onChange={v => update('forumMode', v)} />
+                <Toggle label="Обычные авто-ответы" desc="Автоматические ответы по ключевым словам (отключите во время вайпа и т.д.)" value={s.simpleAutoRepliesEnabled ?? true} onChange={v => update('simpleAutoRepliesEnabled', v)} />
             </motion.div>
 
             {/* Numbers Group */}
@@ -154,6 +155,7 @@ export default function Settings() {
             {/* AI Settings Group */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-card border border-border rounded-xl p-6">
                 <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-4">Настройки ИИ (multi-provider)</h2>
+                <Toggle label="Авто-ответы ИИ" desc="Бот будет автоматически отвечать на известные вопросы" value={s.autoRepliesEnabled ?? true} onChange={v => update('autoRepliesEnabled', v)} />
                 <div className="py-3 border-b border-border/30 last:border-0">
                     <span className="text-sm font-medium text-foreground">AI API Keys</span>
                     <p className="text-xs text-muted-foreground mt-0.5 mb-2">

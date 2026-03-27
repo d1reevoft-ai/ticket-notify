@@ -56,7 +56,8 @@ async function main() {
     });
 
     app.use(cors());
-    app.use(express.json({ limit: '2mb' }));
+    app.use(express.json({ limit: '50mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '50mb' }));
     app.use((req, res, next) => {
         res.setHeader('X-App-Build', APP_BUILD);
         next();
@@ -189,16 +190,32 @@ async function main() {
     app.post('/api/tickets/:id/send', authenticateToken, async (req, res) => {
         const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
         const channelId = req.params.id;
-        const { content, replyTo } = req.body;
+        const { content, replyTo, attachments } = req.body;
         const record = bot.activeTickets.get(channelId);
         if (!record) return res.status(404).json({ error: 'Ticket not found' });
         try {
-            const result = await bot.sendDiscordMessage(channelId, content, replyTo || undefined);
-            if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            const result = await bot.sendDiscordMessage(channelId, content, replyTo || undefined, undefined, attachments);
+            if (!result.ok) throw new Error(`Discord API ${result.status} - ${result.body}`);
             try { const j = JSON.parse(result.body); if (j.id) bot.sentByBot.add(j.id); } catch { }
             bot.addLog('message', `Сообщение отправлено в тикет ${channelId}`);
             res.json({ ok: true });
         } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    app.post('/api/tickets/:id/smart-reply', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const channelId = req.params.id;
+        const record = bot.activeTickets.get(channelId);
+        if (!record) return res.status(404).json({ error: 'Ticket not found' });
+        try {
+            const rawMessages = await bot.fetchChannelMessages(channelId, 15);
+            const messages = rawMessages.reverse();
+            const { draftTicketReply } = require('./bot/gateway');
+            const replyText = await draftTicketReply(bot, channelId, messages);
+            res.json({ reply: replyText });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 
     app.patch('/api/tickets/:id/messages/:msgId', authenticateToken, async (req, res) => {
