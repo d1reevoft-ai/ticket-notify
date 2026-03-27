@@ -1256,12 +1256,13 @@ class Bot {
         };
 
         const normalizePresence = (presence) => {
-            if (!presence) return { status: 'offline', customStatus: null, activityText: null };
-            if (typeof presence === 'string') return { status: presence || 'offline', customStatus: null, activityText: null };
+            if (!presence) return { status: 'offline', customStatus: null, activityText: null, activityObj: null };
+            if (typeof presence === 'string') return { status: presence || 'offline', customStatus: null, activityText: null, activityObj: null };
             return {
                 status: presence.status || 'offline',
                 customStatus: presence.customStatus || null,
                 activityText: presence.activityText || null,
+                activityObj: presence.activityObj || null,
             };
         };
 
@@ -1293,6 +1294,7 @@ class Bot {
                 status: presence.status,
                 customStatus: presence.customStatus,
                 activityText: presence.activityText,
+                activityObj: presence.activityObj, // Added complex rich presence
                 nameColor: bestRole?.color ? toColor(bestRole.color) : null,
             });
         }

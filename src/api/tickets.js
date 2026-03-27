@@ -235,6 +235,28 @@ router.post('/:id/close', async (req, res) => {
     }
 });
 
+// Get discord user profile (for bios and badges)
+router.get('/members/:id/profile', async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const targetId = req.params.id;
+        const bot = botManager.bots.get(userId);
+        if (!bot) return res.status(400).json({ error: 'Bot is not running' });
+
+        const authHeader = typeof bot.getDiscordAuthorizationHeader === 'function' 
+            ? bot.getDiscordAuthorizationHeader() 
+            : bot.config.discordToken || `Bot ${bot.config.discordBotToken}`;
+            
+        // Directly fetch user profile from Discord API
+        const profile = await bot.httpGet(`https://discord.com/api/v9/users/${targetId}/profile`, {
+            Authorization: authHeader
+        });
+        res.json(profile);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 return router;
 }
 

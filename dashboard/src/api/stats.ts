@@ -76,6 +76,16 @@ export const updateSettings = async (settings: Record<string, any>) => {
     return data;
 };
 
+export const updateCategoryMap = async (map: Record<string, string>) => {
+    const { data } = await client.post('/settings/categories', map);
+    return data;
+};
+
+export const fetchMemberProfile = async (memberId: string) => {
+    const { data } = await client.get(`/members/${memberId}/profile`);
+    return data;
+};
+
 // ── Auto-Replies ──────────────────────────────────────────────
 export const fetchAutoReplies = async () => {
     const { data } = await client.get('/autoreplies');
