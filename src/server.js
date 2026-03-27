@@ -435,6 +435,30 @@ async function main() {
     });
 
     // ── Members ──────────────────────────────────────────
+    // Discord user profile proxy (for bio, banner, badges)
+    app.get('/api/members/:id/profile', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res);
+        if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        try {
+            const targetId = req.params.id;
+            const authHeader = typeof bot.getDiscordAuthorizationHeader === 'function'
+                ? bot.getDiscordAuthorizationHeader()
+                : bot.config.discordToken || `Bot ${bot.config.discordBotToken}`;
+
+            const guildId = bot.config.guildId || '';
+            const url = `https://discord.com/api/v9/users/${targetId}/profile?with_mutual_guilds=false&with_mutual_friends=false${guildId ? `&guild_id=${guildId}` : ''}`;
+
+            const raw = await bot.httpGet(url, { Authorization: authHeader });
+            if (!raw.ok) {
+                return res.status(raw.status || 502).json({ error: 'Discord API error', status: raw.status });
+            }
+            const parsed = JSON.parse(raw.body);
+            res.json(parsed);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     app.get('/api/members', authenticateToken, (req, res) => {
         const bot = getBot(req, res);
         if (!bot) return res.json([]);
