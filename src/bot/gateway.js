@@ -1769,7 +1769,7 @@ function handleDispatch(bot, event, d) {
 
             // Auto-reply check — runs on ALL guilds, rule.guildId does filtering
             const arExclude = cfg.autoReplyExcludeChannels || ['717735180546343032'];
-            if (!isBot && author.id !== bot.selfUserId && cfg.autoReplies?.length > 0 && !arExclude.includes(d.channel_id)) {
+            if (!isBot && author.id !== bot.selfUserId && cfg.autoReplies?.length > 0 && !arExclude.includes(d.channel_id) && cfg.simpleAutoRepliesEnabled !== false) {
                 // Mark as processed to prevent REST polling from double-processing
                 if (!bot._arProcessed) bot._arProcessed = new Set();
                 bot._arProcessed.add(d.id);
@@ -2742,6 +2742,7 @@ function startAutoReplyPolling(bot) {
                     const msgGuildId = ch?.guild_id || guildId;
                     const arExclude2 = cfg.autoReplyExcludeChannels || ['717735180546343032'];
                     if (arExclude2.includes(channelId)) continue;
+                    if (cfg.simpleAutoRepliesEnabled === false) continue;
                     const decision = evaluateAutoReplyDecision({
                         rules: cfg.autoReplies || [],
                         content: msg.content || '',
@@ -2810,4 +2811,29 @@ async function generateTicketSummary(bot, channelId, messages) {
     return answerText;
 }
 
-module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary };
+async function draftTicketReply(bot, channelId, messages) {
+    const cfg = bot.config || {};
+    const systemPrompt = "Ты — AI-помощник (саппорт) для приватного сервера. Твоя задача — составить грамотный, вежливый и полезный ответ на последний вопрос пользователя в тикете. Опирайся на историю сообщений. Отвечай кратко, от 1 до 3 предложений. Не используй приветствия, так как этот текст будет вставлен в текстовое поле модератора для отправки.";
+
+    const recentMsgs = messages.slice(-20);
+    const formatted = [{ role: 'system', content: systemPrompt }];
+
+    for (const msg of recentMsgs) {
+        let text = msg.content || '';
+        if (!text && msg.embeds) {
+            text = msg.embeds.map(e => e.description || e.title).join(' ');
+        }
+        if (!text) continue;
+        const role = !!msg.author?.bot ? 'assistant' : 'user';
+        const name = msg.author?.username || 'User';
+        formatted.push({ role, content: `${name}: ${text}` });
+    }
+
+    const { ok, answerText, error } = await requestAiAnswer(bot, cfg, formatted, { logPrefix: 'Draft: ' });
+    if (!ok) {
+        throw new Error(error || 'Failed to generate smart reply');
+    }
+    return answerText;
+}
+
+module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply };

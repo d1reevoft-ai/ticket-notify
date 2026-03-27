@@ -329,7 +329,7 @@ class Bot {
                     forum_mode = ?, binds = ?, auto_replies = ?,
                     priority_keywords = ?, staff_role_ids = ?,
                     tickets_category_id = ?, shift_channel_id = ?,
-                    gemini_api_keys = ?
+                    gemini_api_keys = ?, auto_replies_enabled = ?
                     WHERE id = ?`).run(
                     this.config.autoGreetEnabled ? 1 : 0, this.config.autoGreetText || '',
                     JSON.stringify(this.config.autoGreetRoleIds || []),
@@ -514,7 +514,7 @@ class Bot {
     //  DISCORD REST
     // ═══════════════════════════════════════════════════════
 
-    async sendDiscordMessage(channelId, content, replyToMessageId, guildId) {
+    async sendDiscordMessage(channelId, content, replyToMessageId, guildId, attachments = []) {
         const cachedGuildId = this.channelCache.get(String(channelId || ''))?.guild_id || '';
         const effectiveGuildId = String(guildId || cachedGuildId || '').trim();
         const forcedBotRoute = this.shouldUseBotForGuild(effectiveGuildId, channelId);
@@ -524,18 +524,49 @@ class Bot {
         const primaryAuthHeader = this.getDiscordAuthorizationHeaderForGuild(effectiveGuildId, channelId);
         const fallbackAuthHeader = this.getDiscordAuthorizationHeader();
         const url = `https://discord.com/api/v9/channels/${channelId}/messages`;
+        
         const payload = { content };
         if (replyToMessageId) payload.message_reference = { message_id: replyToMessageId };
-        const body = JSON.stringify(payload);
 
-        const sendOnce = (authHeader) => new Promise((resolve, reject) => {
-            const u = new URL(url);
-            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' } }, res => {
-                let chunks = ''; res.on('data', c => chunks += c);
-                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks, usedAuth: authHeader.startsWith('Bot ') ? 'bot' : 'user' }));
-            });
-            req.on('error', reject); req.write(body); req.end();
-        });
+        const sendOnce = async (authHeader) => {
+            if (attachments && attachments.length > 0) {
+                const formData = new FormData();
+                formData.append('payload_json', JSON.stringify(payload));
+                
+                attachments.forEach((att, idx) => {
+                    const base64Data = att.data.replace(/^data:[a-zA-Z0-9+/]+;base64,/, '');
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    // In native fetch, buffer acts as Blob/File when wrapped properly. Wait, standard FormData takes Blobs.
+                    const blob = new Blob([buffer], { type: att.mime || 'application/octet-stream' });
+                    formData.append(`files[${idx}]`, blob, att.name || `file${idx}.png`);
+                });
+
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            Authorization: authHeader,
+                            'User-Agent': 'Mozilla/5.0'
+                        },
+                        body: formData
+                    });
+                    const resBody = await res.text();
+                    return { ok: res.ok, status: res.status, body: resBody, usedAuth: authHeader.startsWith('Bot ') ? 'bot' : 'user' };
+                } catch (err) {
+                    return Promise.reject(err);
+                }
+            } else {
+                const body = JSON.stringify(payload);
+                return new Promise((resolve, reject) => {
+                    const u = new URL(url);
+                    const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' } }, res => {
+                        let chunks = ''; res.on('data', c => chunks += c);
+                        res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks, usedAuth: authHeader.startsWith('Bot ') ? 'bot' : 'user' }));
+                    });
+                    req.on('error', reject); req.write(body); req.end();
+                });
+            }
+        };
 
         const first = await sendOnce(primaryAuthHeader);
         const usedBotFirst = primaryAuthHeader.startsWith('Bot ');
@@ -1186,6 +1217,8 @@ class Bot {
             staffRoleIds: this.config.staffRoleIds || [],
             autoGreetRoleIds: this.config.autoGreetRoleIds || [],
             geminiApiKeys: this.config.geminiApiKeys || [],
+            autoRepliesEnabled: this.config.autoRepliesEnabled !== false,
+            simpleAutoRepliesEnabled: this.config.simpleAutoRepliesEnabled !== false,
             neuroCustomInstructions: this.config.neuroCustomInstructions || [],
             neuroCustomInstructions: this.config.neuroCustomInstructions || [],
         };
@@ -1199,7 +1232,8 @@ class Bot {
             'pollingIntervalSec', 'rateLimitMs', 'priorityKeywords', 'ticketsCategoryId',
             'shiftChannelId', 'autoGreetAllChannels', 'staffRoleIds', 'autoGreetRoleIds', 'geminiApiKeys',
             'neuroCustomInstructions',
-            'neuroCustomInstructions'
+            'neuroCustomInstructions',
+            'autoRepliesEnabled', 'simpleAutoRepliesEnabled'
         ];
         const arrayKeysComma = ['priorityKeywords', 'staffRoleIds', 'autoGreetRoleIds'];
         const arrayKeysNewline = ['geminiApiKeys'];

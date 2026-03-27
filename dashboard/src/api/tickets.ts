@@ -76,8 +76,8 @@ export const fetchTicketMessages = async (id: string): Promise<TicketMessagesRes
     return data;
 };
 
-export const sendTicketMessage = async (id: string, content: string, replyTo?: string): Promise<void> => {
-    await client.post(`/tickets/${id}/send`, { content, replyTo });
+export const sendTicketMessage = async (id: string, content: string, replyTo?: string, attachments?: any[]): Promise<void> => {
+    await client.post(`/tickets/${id}/send`, { content, replyTo, attachments });
 };
 
 export const editTicketMessage = async (id: string, msgId: string, content: string): Promise<void> => {
@@ -86,6 +86,11 @@ export const editTicketMessage = async (id: string, msgId: string, content: stri
 
 export const generateTicketSummary = async (id: string): Promise<{ summary: string }> => {
     const { data } = await client.post(`/tickets/${id}/summary`);
+    return data;
+};
+
+export const generateSmartReply = async (id: string): Promise<{ reply: string }> => {
+    const { data } = await client.post(`/tickets/${id}/smart-reply`);
     return data;
 };
 

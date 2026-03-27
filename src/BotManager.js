@@ -104,6 +104,8 @@ class BotManager {
             rateLimitMs: row.rate_limit_ms || parseInt(env.RATE_LIMIT_MS || '200', 10),
             maxMessageLength: row.max_message_length || 300,
             geminiApiKeys: (row.gemini_api_keys && row.gemini_api_keys !== '[]') ? JSON.parse(row.gemini_api_keys) : [],
+            autoRepliesEnabled: row.auto_replies_enabled !== undefined ? row.auto_replies_enabled === 1 : true,
+            simpleAutoRepliesEnabled: row.simple_auto_replies_enabled !== undefined ? row.simple_auto_replies_enabled === 1 : true,
             neuroKeyword: env.NEURO_KEYWORD || 'нейро',
             discordTokenSource,
             discordBotTokenSource,

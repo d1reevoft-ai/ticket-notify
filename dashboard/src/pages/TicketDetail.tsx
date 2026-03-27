@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary, useCloseTicket } from '../hooks/useTickets';
+import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary, useCloseTicket, useSmartReply } from '../hooks/useTickets';
 import { fetchBinds, fetchSettings } from '../api/stats';
 import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
 import Skeleton from '../components/Skeleton';
 import type { DiscordMessage } from '../api/tickets';
-import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles, Lock } from 'lucide-react';
+import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles, Lock, Paperclip, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -22,12 +22,15 @@ export default function TicketDetail() {
     const { mutateAsync: editMessage, isPending: isEditing } = useEditTicketMessage();
     const { mutateAsync: getSummary, isPending: isSummarizing } = useTicketSummary();
     const { mutateAsync: doCloseTicket, isPending: isClosing } = useCloseTicket();
+    const { mutateAsync: doSmartReply, isPending: isSmartReplying } = useSmartReply();
     const navigate = useNavigate();
     const socket = useSocket();
     const queryClient = useQueryClient();
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const [content, setContent] = useState('');
+    const [attachments, setAttachments] = useState<{name: string; data: string; mime: string}[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [binds, setBinds] = useState<Record<string, { name: string; message: string }>>({});
     const [showBinds, setShowBinds] = useState(false);
     const [slashQuery, setSlashQuery] = useState('');
@@ -131,7 +134,7 @@ export default function TicketDetail() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!content.trim() || !id) return;
+        if ((!content.trim() && attachments.length === 0) || !id) return;
 
         if (editingMsg) {
             try {
@@ -141,10 +144,48 @@ export default function TicketDetail() {
             } catch (_e) { }
         } else {
             try {
-                await sendMessage({ id, content, replyTo: replyTo?.id });
+                await sendMessage({ id, content, replyTo: replyTo?.id, attachments: attachments.length > 0 ? attachments : undefined });
                 setContent('');
                 setReplyTo(null);
+                setAttachments([]);
             } catch (_e) { }
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        files.forEach(file => {
+            if (file.size > 8 * 1024 * 1024) {
+                alert(`Файл ${file.name} слишком большой (макс. 8MB)`);
+                return;
+            }
+            if (attachments.length >= 10) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (typeof ev.target?.result === 'string') {
+                    setAttachments(prev => {
+                        const filtered = prev.filter(a => a.name !== file.name);
+                        return [...filtered, { name: file.name, data: ev.target!.result as string, mime: file.type || 'application/octet-stream' }];
+                    });
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleGenerateSmartReply = async () => {
+        if (!id) return;
+        try {
+            const data = await doSmartReply({ ticketId: id });
+            if (data.reply) {
+                setContent(v => v + (v ? '\n\n' : '') + data.reply);
+                inputRef.current?.focus();
+            }
+        } catch (e) {
+            console.error('Failed to generate smart reply', e);
         }
     };
 
@@ -420,13 +461,34 @@ export default function TicketDetail() {
                             </motion.div>
                         )}
                     </AnimatePresence>
+                    {attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2 px-1">
+                            {attachments.map((att, idx) => (
+                                <div key={idx} className="relative group rounded-lg overflow-hidden border border-border h-16 w-16 bg-secondary flex items-center justify-center">
+                                    {att.mime.startsWith('image/') ? (
+                                        <img src={att.data} alt={att.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="text-[10px] text-muted-foreground text-center px-1 break-all line-clamp-3 leading-tight">{att.name}</div>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                                        className="absolute top-0.5 right-0.5 bg-black/50 hover:bg-black/70 text-white rounded-full p-0.5 transition-colors opacity-0 group-hover:opacity-100 backdrop-blur-sm"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     <form onSubmit={handleSend} className="relative">
                         <textarea
                             ref={inputRef}
                             value={content}
                             onChange={e => handleContentChange(e.target.value)}
                             placeholder={editingMsg ? 'Введите новый текст...' : replyTo ? 'Напишите ответ...' : 'Напишите ответ или / для бинда...'}
-                            className="w-full bg-secondary/50 border border-border rounded-xl pl-4 pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
+                            className="w-full bg-secondary/50 border border-border rounded-xl pl-[6.5rem] pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
                             onKeyDown={e => {
                                 if (showBinds && content.startsWith('/') && filteredBinds.length > 0) {
                                     if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex(prev => Math.min(prev + 1, filteredBinds.length - 1)); return; }
@@ -437,8 +499,19 @@ export default function TicketDetail() {
                                 if (e.key === 'Escape') { e.preventDefault(); cancelAction(); return; }
                                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any); }
                             }} />
+                        <div className="absolute left-2 top-2 flex items-center gap-0.5 text-muted-foreground">
+                            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-foreground">
+                                <Paperclip className="w-4 h-4 md:w-5 md:h-5" />
+                            </button>
+                            {!editingMsg && (
+                                <button type="button" onClick={handleGenerateSmartReply} disabled={isSmartReplying} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-purple-500 disabled:opacity-50">
+                                    {isSmartReplying ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
+                                </button>
+                            )}
+                        </div>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" />
                         <div className="absolute right-2 top-2">
-                            <button type="submit" disabled={(isPending || isEditing) || !content.trim()} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+                            <button type="submit" disabled={(isPending || isEditing) || (!content.trim() && attachments.length === 0)} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
                                 {editingMsg ? <Pencil className="w-4 h-4 md:w-5 md:h-5" /> : <Send className="w-4 h-4 md:w-5 md:h-5" />}
                             </button>
                         </div>

@@ -183,7 +183,15 @@ function initDb(dataDir) {
             db.exec("ALTER TABLE users ADD COLUMN google_id TEXT DEFAULT NULL;");
             console.log('[DB] Migration: google_id column added.');
         }
-    } catch (e) { console.error('[DB] Migration error on users.email/google_id:', e.message); }
+        if (!usersInfo.some(col => col.name === 'auto_replies_enabled')) {
+            db.exec("ALTER TABLE users ADD COLUMN auto_replies_enabled INTEGER DEFAULT 1;");
+            console.log('[DB] Migration: auto_replies_enabled column added.');
+        }
+        if (!usersInfo.some(col => col.name === 'simple_auto_replies_enabled')) {
+            db.exec("ALTER TABLE users ADD COLUMN simple_auto_replies_enabled INTEGER DEFAULT 1;");
+            console.log('[DB] Migration: simple_auto_replies_enabled column added.');
+        }
+    } catch (e) { console.error('[DB] Migration error on users columns:', e.message); }
 
     // Create otp_codes table
     try {
