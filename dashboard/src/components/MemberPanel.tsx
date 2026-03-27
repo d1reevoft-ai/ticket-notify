@@ -173,24 +173,44 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
         return groups.reduce((sum, g) => sum + (g.members?.length || 0), 0);
     }, [groups]);
 
-    const renderActivityImage = (act: any) => {
-        if (!act?.assets?.large_image && !act?.assets?.small_image) return null;
-        const imgKey = act.assets.large_image || act.assets.small_image;
-        if (!imgKey) return null;
-        
-        let url = `https://cdn.discordapp.com/app-assets/${act.application_id}/${imgKey}.png`;
-        if (imgKey.startsWith('spotify:')) {
-            url = `https://i.scdn.co/image/${imgKey.replace('spotify:', '')}`;
+    const resolveAssetUrl = (key: string, appId?: string) => {
+        if (!key) return null;
+        if (key.startsWith('mp:')) {
+            return `https://media.discordapp.net/${key.replace('mp:', '')}`;
         }
+        if (key.startsWith('spotify:')) {
+            return `https://i.scdn.co/image/${key.replace('spotify:', '')}`;
+        }
+        if (key.startsWith('external/')) {
+            return `https://media.discordapp.net/external/${key.replace('external/', '')}`;
+        }
+        if (key.startsWith('http')) return key;
+        if (appId) return `https://cdn.discordapp.com/app-assets/${appId}/${key}.png`;
+        return null;
+    };
+
+    const renderActivityImage = (act: any) => {
+        const largeUrl = resolveAssetUrl(act?.assets?.large_image, act?.application_id);
+        const smallUrl = resolveAssetUrl(act?.assets?.small_image, act?.application_id);
+        const url = largeUrl || smallUrl;
+        if (!url) return null;
         
         return (
             <div className="relative shrink-0">
                 <img 
                     src={url} 
                     alt="Activity" 
-                    className="w-12 h-12 rounded-[10px] object-cover shadow-sm bg-secondary/50 border border-border/20"
+                    className="w-14 h-14 rounded-lg object-cover shadow-md bg-secondary/50"
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 />
+                {largeUrl && smallUrl && largeUrl !== smallUrl && (
+                    <img 
+                        src={smallUrl} 
+                        alt="" 
+                        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card bg-secondary"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                )}
             </div>
         );
     };
@@ -345,38 +365,37 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                     >
                         {/* Banner */}
                         <div 
-                            className="h-[100px] w-full shrink-0 relative transition-colors duration-500 ease-in-out"
+                            className="h-[60px] w-full shrink-0 relative"
                             style={{ 
-                                backgroundColor: profileObj?.user?.banner_color || selectedProfile.member.nameColor || '#3b82f6',
+                                backgroundColor: profileObj?.user?.banner_color || selectedProfile.member.nameColor || '#5865F2',
                             }} 
                         >
-                            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/40 mix-blend-multiply" />
                             {profileObj?.user?.banner && (
                                 <img 
-                                    src={`https://cdn.discordapp.com/banners/${selectedProfile.member.id}/${profileObj.user.banner}.png?size=512`} 
+                                    src={`https://cdn.discordapp.com/banners/${selectedProfile.member.id}/${profileObj.user.banner}${profileObj.user.banner.startsWith('a_') ? '.gif' : '.png'}?size=480`} 
                                     alt="Banner" 
-                                    className="absolute inset-0 w-full h-full object-cover opacity-90 mix-blend-luminosity" 
+                                    className="absolute inset-0 w-full h-full object-cover" 
                                 />
                             )}
                         </div>
                         
                         <div className="px-5 pb-5 relative bg-card flex-1 overflow-y-auto custom-scrollbar">
                             {/* Avatar Float */}
-                            <div className="absolute -top-[52px] left-5 p-1.5 bg-card rounded-full z-10">
+                            <div className="absolute -top-[40px] left-4 p-[3px] bg-card rounded-full z-20">
                                 <div className="relative">
                                     <img 
                                         src={selectedProfile.member.avatar} 
                                         alt={selectedProfile.member.displayName}
-                                        className="w-[84px] h-[84px] rounded-full object-cover shadow-inner bg-secondary"
+                                        className="w-[76px] h-[76px] rounded-full object-cover bg-secondary"
                                     />
                                     <span 
-                                        className={`absolute bottom-1 right-1 w-[22px] h-[22px] rounded-full border-[3.5px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
+                                        className={`absolute bottom-0 right-0 w-[20px] h-[20px] rounded-full border-[3px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
                                     />
                                 </div>
                             </div>
                             
                             {/* Info */}
-                            <div className="pt-12">
+                            <div className="pt-11">
                                 <h3 className="text-[20px] font-bold leading-tight flex items-center gap-2 break-words">
                                     {selectedProfile.member.displayName}
                                 </h3>
@@ -447,13 +466,13 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                                 <div className="h-2 bg-secondary rounded w-1/2"></div>
                                             </div>
                                         </div>
-                                    ) : profileObj?.user?.bio ? (
+                                    ) : (profileObj?.user?.bio || profileObj?.user_profile?.bio) ? (
                                         <div className="pt-2">
                                             <div className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground/80 mb-1.5 border-b border-border/50 pb-1 w-max">
                                                 Обо мне
                                             </div>
                                             <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap">
-                                                {profileObj.user.bio}
+                                                {profileObj?.user?.bio || profileObj?.user_profile?.bio}
                                             </p>
                                         </div>
                                     ) : null}

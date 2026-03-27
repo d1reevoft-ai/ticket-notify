@@ -246,12 +246,17 @@ router.get('/members/:id/profile', async (req, res) => {
         const authHeader = typeof bot.getDiscordAuthorizationHeader === 'function' 
             ? bot.getDiscordAuthorizationHeader() 
             : bot.config.discordToken || `Bot ${bot.config.discordBotToken}`;
+
+        const guildId = bot.config.guildId || '';
+        const url = `https://discord.com/api/v9/users/${targetId}/profile?with_mutual_guilds=false&with_mutual_friends=false${guildId ? `&guild_id=${guildId}` : ''}`;
             
-        // Directly fetch user profile from Discord API
-        const profile = await bot.httpGet(`https://discord.com/api/v9/users/${targetId}/profile`, {
-            Authorization: authHeader
-        });
-        res.json(profile);
+        const raw = await bot.httpGet(url, { Authorization: authHeader });
+        if (!raw.ok) {
+            return res.status(raw.status || 500).json({ error: 'Discord API error', status: raw.status });
+        }
+        // httpGet returns { ok, status, body } where body is a JSON string
+        const parsed = JSON.parse(raw.body);
+        res.json(parsed);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
