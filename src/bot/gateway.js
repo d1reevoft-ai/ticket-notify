@@ -2379,8 +2379,9 @@ function requestDashboardMembersSidebar(bot, guildId, ticketsCategoryId, channel
         .map(entry => entry.channel);
     if (selected.length === 0) selected.push(rankedChannels[0].channel);
 
-    const ranges = [];
-    for (let i = 0; i < 2500; i += 100) ranges.push([i, i + 99]);
+    // Only request the first 100 members to avoid triggering Discord's anti-scraping 400x disconnects.
+    // Moderation roles are hoisted to the top, so they easily fit in the first chunk.
+    const ranges = [[0, 99]];
     const channels = {};
     for (const channel of selected) {
         channels[channel.id] = ranges;
@@ -2392,8 +2393,8 @@ function requestDashboardMembersSidebar(bot, guildId, ticketsCategoryId, channel
             d: {
                 guild_id: guildId,
                 typing: true,
-                threads: true,
-                activities: true,
+                threads: false,
+                activities: false,
                 members: [],
                 channels,
             }
