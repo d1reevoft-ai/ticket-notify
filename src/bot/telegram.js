@@ -7,9 +7,18 @@ const { getAiUsageStats, resetAiUsageStats } = require('./gateway');
 
 function startPolling(bot) {
     if (bot.pollingTimer) return;
+    if (bot.config.telegramEnabled === false) {
+        bot.log('📡 Telegram polling skipped (disabled in settings)');
+        return;
+    }
     bot.log('📡 Telegram polling started');
     async function poll() {
         if (bot.destroyed) return;
+        if (bot.config.telegramEnabled === false) {
+            bot.log('📡 Telegram polling stopped (disabled in settings)');
+            bot.pollingTimer = null;
+            return;
+        }
         try {
             const updates = await bot.tgGetUpdates();
             for (const u of updates) {
