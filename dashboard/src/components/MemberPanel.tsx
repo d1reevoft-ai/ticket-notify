@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchMembers } from '../api/stats';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, ChevronDown, ChevronRight, PanelRightClose } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Users, ChevronDown, ChevronRight, PanelRightClose, Copy, Check } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket';
 
 type Member = {
@@ -68,6 +68,14 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [autoCollapsedApplied, setAutoCollapsedApplied] = useState(false);
 
+    // Context Menu State
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; member: Member } | null>(null);
+    const [copied, setCopied] = useState(false);
+
+    // Popover State
+    const [selectedProfile, setSelectedProfile] = useState<{ member: Member; y: number; groupName: string } | null>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+
     const preparedGroups = useMemo(() => {
         if (!groups || !Array.isArray(groups)) return [];
 
@@ -106,10 +114,45 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
         setAutoCollapsedApplied(true);
     }, [preparedGroups, autoCollapsedApplied, collapsed]);
 
+    // Close overlays on outside click
+    useEffect(() => {
+        const handleOutsideClick = (e: MouseEvent) => {
+            setContextMenu(null);
+            setSelectedProfile(null);
+        };
+        window.addEventListener('click', handleOutsideClick);
+        return () => window.removeEventListener('click', handleOutsideClick);
+    }, []);
+
+    const handleContextMenu = (e: React.MouseEvent, member: Member) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, member });
+        setSelectedProfile(null);
+    };
+
+    const handleProfileClick = (e: React.MouseEvent, member: Member, groupName: string) => {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        setSelectedProfile({ member, y: rect.top, groupName });
+        setContextMenu(null);
+    };
+
+    const copyId = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (contextMenu) {
+            navigator.clipboard.writeText(contextMenu.member.id);
+            setCopied(true);
+            setTimeout(() => {
+                setCopied(false);
+                setContextMenu(null);
+            }, 1000);
+        }
+    };
+
     const totalMembers = preparedGroups.reduce((sum, group) => sum + group.members.length, 0);
 
     return (
-        <div className="member-panel-shell w-72 shrink-0 bg-card border-l border-border h-full overflow-y-auto custom-scrollbar">
+        <div ref={panelRef} className="member-panel-shell relative w-72 shrink-0 bg-card border-l border-border h-full overflow-y-auto custom-scrollbar">
             <div className="sticky top-0 bg-card/95 backdrop-blur-sm z-10 px-4 py-3 border-b border-border">
                 <div className="flex items-center gap-2.5 text-sm font-rajdhani font-bold uppercase tracking-[0.08em] text-muted-foreground">
                     <Users className="w-4 h-4" />
@@ -122,7 +165,6 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                             onClick={onClose}
                             className="ml-1 w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors"
                             title="Скрыть панель участников"
-                            aria-label="Скрыть панель участников"
                         >
                             <PanelRightClose className="w-4 h-4" />
                         </button>
@@ -178,6 +220,7 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                                 const status = normalizeStatus(member.status);
                                                 const meta = STATUS_META[status] || STATUS_META.offline;
                                                 const subtitle = getMemberSubtitle(member);
+                                                const isActive = selectedProfile?.member.id === member.id;
 
                                                 return (
                                                     <motion.div
@@ -187,7 +230,9 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                                         animate={{ opacity: 1, x: 0 }}
                                                         exit={{ opacity: 0, x: -6 }}
                                                         transition={{ duration: 0.16 }}
-                                                        className="mx-2 rounded-xl px-2.5 py-1.5 hover:bg-secondary/45 transition-colors cursor-default group min-w-0"
+                                                        onClick={(e) => handleProfileClick(e, member, group.roleName)}
+                                                        onContextMenu={(e) => handleContextMenu(e, member)}
+                                                        className={`mx-2 rounded-xl px-2.5 py-1.5 transition-colors cursor-pointer min-w-0 ${isActive ? 'bg-secondary/60' : 'hover:bg-secondary/45'}`}
                                                     >
                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                             <div className="relative shrink-0">
@@ -211,9 +256,7 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                                                                     >
                                                                         {member.displayName || member.username || member.id}
                                                                     </span>
-                                                                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
-                                                                        {meta.label}
-                                                                    </span>
+                                                                    {status === 'offline' && <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">offline</span>}
                                                                 </div>
                                                                 <div className="text-[11px] leading-tight text-muted-foreground/80 truncate">
                                                                     {subtitle}
@@ -231,6 +274,105 @@ export default function MemberPanel({ onClose }: MemberPanelProps) {
                     ))}
                 </div>
             )}
+
+            {/* Profile Popover */}
+            <AnimatePresence>
+                {selectedProfile && (
+                    <motion.div
+                        initial={{ opacity: 0, x: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="fixed right-[290px] w-80 bg-popover/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl overflow-hidden z-50"
+                        style={{
+                            top: Math.min(Math.max(20, selectedProfile.y - 100), window.innerHeight - 350)
+                        }}
+                    >
+                        {/* Banner */}
+                        <div 
+                            className="h-24 w-full"
+                            style={{ 
+                                backgroundColor: selectedProfile.member.nameColor || '#3b82f6',
+                                backgroundImage: `linear-gradient(to bottom, transparent, rgba(0,0,0,0.4))`
+                            }} 
+                        />
+                        <div className="px-5 pb-5 relative bg-card">
+                            {/* Avatar Float */}
+                            <div className="absolute -top-12 left-5 p-1.5 bg-card rounded-full">
+                                <div className="relative">
+                                    <img 
+                                        src={selectedProfile.member.avatar} 
+                                        alt={selectedProfile.member.displayName}
+                                        className="w-20 h-20 rounded-full object-cover shadow-inner"
+                                    />
+                                    <span 
+                                        className={`absolute bottom-0 right-1 w-5 h-5 rounded-full border-[3px] border-card ${STATUS_META[normalizeStatus(selectedProfile.member.status)].dotClass}`} 
+                                    />
+                                </div>
+                            </div>
+                            
+                            {/* Info */}
+                            <div className="pt-12">
+                                <h3 className="text-xl font-bold leading-tight flex items-center gap-2">
+                                    {selectedProfile.member.displayName}
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                    {selectedProfile.member.username !== selectedProfile.member.displayName ? `@${selectedProfile.member.username}` : selectedProfile.member.id}
+                                </p>
+                                
+                                <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                                    <div>
+                                        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Высшая Роль</div>
+                                        <div 
+                                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide border border-border bg-secondary/30"
+                                            style={{ color: selectedProfile.member.nameColor || '#fff' }}
+                                        >
+                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedProfile.member.nameColor || '#fff' }}/>
+                                            {selectedProfile.groupName}
+                                        </div>
+                                    </div>
+
+                                    {(selectedProfile.member.customStatus || selectedProfile.member.activityText) && (
+                                        <div>
+                                            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Обо мне / Статус</div>
+                                            <p className="text-sm bg-secondary/20 p-2 rounded-md border border-border/40">
+                                                {selectedProfile.member.customStatus || selectedProfile.member.activityText}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Context Menu */}
+            <AnimatePresence>
+                {contextMenu && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.1 }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="fixed z-50 min-w-[180px] bg-popover/95 backdrop-blur-xl border border-border shadow-xl rounded-lg p-1.5"
+                        style={{
+                            left: Math.min(contextMenu.x, window.innerWidth - 200),
+                            top: Math.min(contextMenu.y, window.innerHeight - 60)
+                        }}
+                    >
+                        <button
+                            onClick={copyId}
+                            className="w-full flex items-center justify-between gap-3 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
+                        >
+                            <span>Скопировать ID</span>
+                            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 opacity-70" />}
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
