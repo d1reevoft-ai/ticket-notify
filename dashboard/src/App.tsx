@@ -21,6 +21,7 @@ import ConversationLog from './pages/ConversationLog';
 import AdminPanel from './pages/AdminPanel';
 import Prompt from './pages/Prompt';
 import Server from './pages/Server';
+import FAQ from './pages/FAQ';
 
 export default function App() {
     const { token, loading } = useAuth();
@@ -79,6 +80,7 @@ export default function App() {
                     <Route path="/server/:channelId" element={<Server />} />
                     <Route path="/admin" element={<AdminPanel />} />
                     <Route path="/profile" element={<Profile />} />
+                    <Route path="/faq" element={<FAQ />} />
                     <Route path="*" element={<Navigate to="/tickets" replace />} />
                 </Route>
             )}

@@ -131,6 +131,42 @@ router.patch('/:id/messages/:msgId', async (req, res) => {
     }
 });
 
+// Add a reaction to a message
+router.put('/:id/messages/:msgId/reactions/:emoji', async (req, res) => {
+    const userId = req.user.userId;
+    const { id: channelId, msgId, emoji } = req.params;
+    const bot = botManager.bots.get(userId);
+
+    if (!bot) return res.status(400).json({ error: 'Bot is not running' });
+
+    try {
+        const result = await bot.addDiscordReaction(channelId, msgId, emoji);
+        if (!result.ok) throw new Error(`Discord API ${result.status}`);
+        res.json({ ok: true });
+    } catch (err) {
+        bot.log(`❌ Add Reaction Error: ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Remove a reaction from a message
+router.delete('/:id/messages/:msgId/reactions/:emoji', async (req, res) => {
+    const userId = req.user.userId;
+    const { id: channelId, msgId, emoji } = req.params;
+    const bot = botManager.bots.get(userId);
+
+    if (!bot) return res.status(400).json({ error: 'Bot is not running' });
+
+    try {
+        const result = await bot.removeDiscordReaction(channelId, msgId, emoji);
+        if (!result.ok) throw new Error(`Discord API ${result.status}`);
+        res.json({ ok: true });
+    } catch (err) {
+        bot.log(`❌ Remove Reaction Error: ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Generate AI Summary for a ticket
 router.post('/:id/summary', async (req, res) => {
     const userId = req.user.userId;

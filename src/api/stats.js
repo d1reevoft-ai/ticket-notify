@@ -44,6 +44,60 @@ function createStatsRoutes(db, botManager) {
         res.json(bot.dashboardLogs.slice(0, limit));
     });
 
+    // Semantic search over logs using Gemini
+    router.post('/logs/semantic-search', async (req, res) => {
+        const userId = req.user.userId;
+        const bot = botManager.bots.get(userId);
+        if (!bot) return res.json([]);
+
+        const { query } = req.body;
+        if (!query) return res.status(400).json({ error: 'Search query is required' });
+
+        const logs = bot.dashboardLogs.slice(0, 150); // Get recent logs up to 150
+        if (logs.length === 0) return res.json([]);
+
+        try {
+            const { requestAiAnswer } = require('../bot/gateway');
+            
+            // Provide logs to the AI and ask it to filter
+            const prompt = `You are a log analysis assistant. The user wants to find logs matching this exact intent or semantic meaning: "${query}"
+
+Here are the recent system logs in JSON format:
+${JSON.stringify(logs.map((l, i) => ({ index: i, type: l.type, msg: l.msg, t: l.timestamp })), null, 2)}
+
+Filter this list to ONLY include the items (by index) that are strictly relevant to the user's intent. Return your response as a pure JSON array of integers. For example: [0, 5, 12]. Do NOT return markdown formatting or anything besides the JSON array. If nothing matches, return [].`;
+
+            bot.log(`🧠 Performing semantic search on logs for query: "${query}"`);
+            const aiMessages = [{ role: 'user', content: prompt }];
+            const aiResult = await requestAiAnswer(bot, bot.config, aiMessages, { logPrefix: 'LogSearch: ' });
+
+            if (!aiResult.ok) {
+                return res.status(500).json({ error: aiResult.error || 'AI generation failed' });
+            }
+
+            let text = aiResult.answerText.trim();
+            if (text.startsWith('\`\`\`json')) {
+                text = text.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '');
+            } else if (text.startsWith('\`\`\`')) {
+                text = text.replace(/^\`\`\`\n/, '').replace(/\n\`\`\`$/, '');
+            }
+
+            let indices = [];
+            try {
+                indices = JSON.parse(text);
+                if (!Array.isArray(indices)) indices = [];
+            } catch (e) {
+                bot.log(`❌ Semantic search failed to parse JSON: ${text}`);
+            }
+
+            const matchedLogs = indices.map(i => logs[i]).filter(Boolean);
+            res.json(matchedLogs);
+        } catch (err) {
+            bot.log(`❌ Semantic Search Error: ${err.message}`);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Get analytics
     router.get('/analytics', (req, res) => {
         const userId = req.user.userId;

@@ -139,6 +139,35 @@ function initDb(dataDir) {
         console.error("[DB] Migration error on users.gemini_api_keys:", e.message);
     }
 
+    // Add reactions column to ticket_messages if missing
+    try {
+        const tmInfo = db.pragma('table_info(ticket_messages)');
+        if (!tmInfo.some(col => col.name === 'reactions')) {
+            db.exec("ALTER TABLE ticket_messages ADD COLUMN reactions TEXT DEFAULT '{}';");
+            console.log('[DB] Migration: reactions column added to ticket_messages.');
+        }
+    } catch (e) {
+        console.error("[DB] Migration error on ticket_messages.reactions:", e.message);
+    }
+
+    // Create faq_articles table
+    try {
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS faq_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                keywords TEXT DEFAULT '[]',
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+        `);
+    } catch (e) {
+        console.error("[DB] Error creating faq_articles table:", e.message);
+    }
+
     // Migrate: add role column if missing
     try {
         const usersInfo = db.pragma('table_info(users)');

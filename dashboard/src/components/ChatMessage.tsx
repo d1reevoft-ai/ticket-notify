@@ -3,7 +3,7 @@ import { ru } from 'date-fns/locale';
 import type { DiscordMessage } from '../api/tickets';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Reply, Pencil, CornerDownRight, X, Maximize2 } from 'lucide-react';
+import { Reply, Pencil, CornerDownRight, X, Maximize2, Smile } from 'lucide-react';
 import { useState } from 'react';
 
 const IMAGE_URL_RE = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp)(?:\?[^\s]*)?)/gi;
@@ -59,11 +59,12 @@ type ChatMessageProps = {
     onReply?: (msg: DiscordMessage) => void;
     onEdit?: (msg: DiscordMessage) => void;
     canEdit?: boolean;
+    onToggleReaction?: (msg: DiscordMessage, emoji: string, add: boolean) => void;
 };
 
-export default function ChatMessage({ message, isStaff, mentionMap, onReply, onEdit, canEdit }: ChatMessageProps) {
+export default function ChatMessage({ message, isStaff, mentionMap, onReply, onEdit, canEdit, onToggleReaction }: ChatMessageProps) {
     const isBot = message.author.bot;
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<string | undefined>(undefined);
 
     const contentIsImageOnly = message.content && IMAGE_URL_RE.test(message.content) && message.content.trim().match(IMAGE_URL_RE)?.join('').length === message.content.trim().length;
     IMAGE_URL_RE.lastIndex = 0;
@@ -106,6 +107,15 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
 
                         {/* Action buttons */}
                         <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-0.5 ml-1">
+                            {onToggleReaction && (
+                                <button
+                                    onClick={() => onToggleReaction(message, '👍', true)}
+                                    className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                                    title="Поставить 👍"
+                                >
+                                    <Smile className="w-3.5 h-3.5" />
+                                </button>
+                            )}
                             {onReply && (
                                 <button
                                     onClick={() => onReply(message)}
@@ -239,6 +249,27 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                             ))}
                         </div>
                     )}
+
+                    {/* Reactions */}
+                    {message.reactions && message.reactions.length > 0 && (
+                        <div className={cn("mt-1.5 flex flex-wrap gap-1", isStaff ? "justify-end" : "justify-start")}>
+                            {message.reactions.map((r, ri) => (
+                                <button
+                                    key={ri}
+                                    onClick={() => onToggleReaction && onToggleReaction(message, r.emoji.name, !r.me)}
+                                    className={cn(
+                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ring-1",
+                                        r.me 
+                                            ? "bg-primary/20 text-primary ring-primary/40 hover:bg-primary/30" 
+                                            : "bg-secondary/50 text-foreground/80 ring-border/50 hover:bg-secondary"
+                                    )}
+                                >
+                                    <span>{r.emoji.id ? <img src={`https://cdn.discordapp.com/emojis/${r.emoji.id}.png`} className="w-4 h-4" alt={r.emoji.name} /> : r.emoji.name}</span>
+                                    <span className={cn("text-[11px]", r.me ? "font-bold" : "opacity-80")}>{r.count}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </motion.div>
@@ -249,11 +280,11 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    onClick={() => setPreviewImage(null)}
+                    onClick={() => setPreviewImage(undefined)}
                     className="fixed inset-0 z-[100] bg-background/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
                 >
                     <button
-                        onClick={() => setPreviewImage(null)}
+                        onClick={() => setPreviewImage(undefined)}
                         className="absolute top-6 right-6 p-3 bg-secondary/80 hover:bg-secondary rounded-full text-foreground/80 hover:text-foreground transition-colors z-[101]"
                     >
                         <X className="w-6 h-6" />
