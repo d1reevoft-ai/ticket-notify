@@ -20,6 +20,7 @@ import ClosedTickets from './pages/ClosedTickets';
 import ConversationLog from './pages/ConversationLog';
 import AdminPanel from './pages/AdminPanel';
 import Prompt from './pages/Prompt';
+import Server from './pages/Server';
 
 export default function App() {
     const { token, loading } = useAuth();
@@ -74,6 +75,8 @@ export default function App() {
                     <Route path="/closed-tickets" element={<ClosedTickets />} />
                     <Route path="/ai-learning" element={<ConversationLog />} />
                     <Route path="/prompt" element={<Prompt />} />
+                    <Route path="/server" element={<Server />} />
+                    <Route path="/server/:channelId" element={<Server />} />
                     <Route path="/admin" element={<AdminPanel />} />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="*" element={<Navigate to="/tickets" replace />} />

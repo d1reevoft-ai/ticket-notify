@@ -581,6 +581,71 @@ async function main() {
         });
     });
 
+    // ── Server Tab (Discord Chat) ──────────────────────────
+    const SERVER_GUILD_ID = '690362306395111444';
+
+    app.get('/api/server/channels', authenticateToken, (req, res) => {
+        const bot = getBot(req, res);
+        if (!bot) return res.json({ categories: [], channels: [] });
+        const channels = [];
+        const categoriesMap = new Map();
+        for (const [id, ch] of bot.channelCache) {
+            if (ch.guild_id !== SERVER_GUILD_ID) continue;
+            if (ch.type === 4) { // category
+                categoriesMap.set(id, { id, name: ch.name || '', position: ch.position ?? 0 });
+            }
+        }
+        for (const [id, ch] of bot.channelCache) {
+            if (ch.guild_id !== SERVER_GUILD_ID) continue;
+            if (ch.type !== 0 && ch.type !== 5) continue; // text + announcement only
+            channels.push({
+                id,
+                name: ch.name || '',
+                position: ch.position ?? 0,
+                parentId: ch.parent_id || null,
+                parentName: categoriesMap.get(ch.parent_id)?.name || null,
+                topic: ch.topic || null,
+            });
+        }
+        channels.sort((a, b) => a.position - b.position);
+        const categories = [...categoriesMap.values()].sort((a, b) => a.position - b.position);
+        res.json({ categories, channels });
+    });
+
+    app.get('/api/server/channels/:channelId/messages', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res);
+        if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { channelId } = req.params;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        const before = req.query.before || null;
+        try {
+            const messages = await bot.fetchChannelMessages(channelId, limit, before);
+            const ordered = [...messages].reverse();
+            res.json({ messages: ordered });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.post('/api/server/channels/:channelId/send', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res);
+        if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { channelId } = req.params;
+        const { content, replyTo, attachments } = req.body;
+        if (!content && (!attachments || attachments.length === 0)) {
+            return res.status(400).json({ error: 'content or attachments required' });
+        }
+        try {
+            const result = await bot.sendDiscordMessage(channelId, content || '', replyTo || undefined, SERVER_GUILD_ID, attachments || []);
+            if (!result.ok) throw new Error(`Discord API ${result.status} - ${result.body}`);
+            try { const j = JSON.parse(result.body); if (j.id) bot.sentByBot.add(j.id); } catch {}
+            bot.addLog('message', `[Server] Сообщение отправлено в канал ${channelId}`);
+            res.json({ ok: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // ── Closed Tickets ───────────────────────────────────
     app.get('/api/closed-tickets', authenticateToken, (req, res) => {
         const bot = getBot(req, res);
