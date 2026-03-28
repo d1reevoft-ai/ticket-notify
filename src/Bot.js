@@ -600,10 +600,12 @@ class Bot {
         });
     }
 
-    async fetchChannelMessages(channelId, limit = 100) {
+    async fetchChannelMessages(channelId, limit = 100, before = null) {
         const authHeader = this.getDiscordAuthorizationHeader();
         try {
-            const res = await this.httpGet(`https://discord.com/api/v9/channels/${channelId}/messages?limit=${limit}`, { Authorization: authHeader });
+            let url = `https://discord.com/api/v9/channels/${channelId}/messages?limit=${limit}`;
+            if (before) url += `&before=${before}`;
+            const res = await this.httpGet(url, { Authorization: authHeader });
             return res.ok ? JSON.parse(res.body) : [];
         } catch { return []; }
     }

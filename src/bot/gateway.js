@@ -1761,6 +1761,11 @@ function handleDispatch(bot, event, d) {
             if (!author) break;
             const isBot = author.bot || false;
 
+            // Emit for Server Tab (all channels of any guild)
+            if (d.guild_id) {
+                emitDashboard(bot, 'server:message', { channelId: d.channel_id, guildId: d.guild_id, message: formatDashboardMessage(bot, d) });
+            }
+
             // Cache member from message for members panel (only for the configured guild)
             if (d.member && author && d.guild_id === guildId) {
                 bot.guildMembersCache.set(author.id, { ...d.member, user: author });
@@ -2128,6 +2133,10 @@ function handleDispatch(bot, event, d) {
         }
 
         case 'MESSAGE_UPDATE': {
+            // Server Tab real-time
+            if (d.guild_id && d.author) {
+                emitDashboard(bot, 'server:message_update', { channelId: d.channel_id, guildId: d.guild_id, message: formatDashboardMessage(bot, d) });
+            }
             if (d.guild_id !== guildId) break;
             const record = bot.activeTickets.get(d.channel_id);
             if (!record) break;
@@ -2136,6 +2145,10 @@ function handleDispatch(bot, event, d) {
         }
 
         case 'MESSAGE_DELETE': {
+            // Server Tab real-time
+            if (d.guild_id) {
+                emitDashboard(bot, 'server:message_delete', { channelId: d.channel_id, guildId: d.guild_id, messageId: d.id });
+            }
             if (d.guild_id !== guildId) break;
             const record = bot.activeTickets.get(d.channel_id);
             if (!record) break;

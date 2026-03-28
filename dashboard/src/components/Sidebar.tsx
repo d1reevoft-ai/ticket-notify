@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ticket, Keyboard, Clock, ScrollText, LogOut, Settings, Bot, TicketX, X, User, Brain, ShieldCheck, FileText } from 'lucide-react';
+import { LayoutDashboard, Ticket, Keyboard, Clock, ScrollText, LogOut, Settings, Bot, TicketX, X, User, Brain, ShieldCheck, FileText, Server } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     { to: '/autoreplies', icon: Bot, label: 'Авто-ответы', accent: 'primary' },
     { to: '/ai-learning', icon: Brain, label: 'Обучение ИИ', accent: 'primary' },
     { to: '/prompt', icon: FileText, label: 'Промпт', accent: 'primary' },
+    { to: '/server', icon: Server, label: 'Сервер', accent: 'primary' },
     { to: '/profile', icon: User, label: 'Профиль', accent: 'primary' },
     { to: '/settings', icon: Settings, label: 'Настройки', accent: 'primary' },
 ];
