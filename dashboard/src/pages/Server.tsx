@@ -219,13 +219,13 @@ export default function Server() {
     const activeChannel = channels.find(ch => ch.id === channelId);
 
     return (
-        <div className="h-[calc(100vh-8rem)] flex gap-0 max-w-[95rem] mx-auto">
+        <div className="h-full w-full flex gap-4 max-w-full mx-auto">
             {/* ── Channel List Sidebar ── */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3 }}
-                className="w-60 shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col mr-4"
+                className="w-64 shrink-0 bg-card border border-border rounded-xl hidden md:flex flex-col"
             >
                 <div className="px-3 py-3 border-b border-border bg-card/50 flex items-center gap-2">
                     <Link to="/tickets" className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0">
