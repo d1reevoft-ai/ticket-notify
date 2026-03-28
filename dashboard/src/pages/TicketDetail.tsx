@@ -176,6 +176,25 @@ export default function TicketDetail() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = Array.from(e.clipboardData?.items || []);
+        for (const item of items) {
+            if (!item.type.startsWith('image/')) continue;
+            const file = item.getAsFile();
+            if (!file || file.size > 8 * 1024 * 1024) continue;
+            if (attachments.length >= 10) break;
+            e.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (typeof ev.target?.result === 'string') {
+                    const name = `paste-${Date.now()}.${file.type.split('/')[1] || 'png'}`;
+                    setAttachments(prev => [...prev, { name, data: ev.target!.result as string, mime: file.type }]);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     const handleGenerateSmartReply = async () => {
         if (!id) return;
         try {
@@ -487,6 +506,7 @@ export default function TicketDetail() {
                             ref={inputRef}
                             value={content}
                             onChange={e => handleContentChange(e.target.value)}
+                            onPaste={handlePaste}
                             placeholder={editingMsg ? 'Введите новый текст...' : replyTo ? 'Напишите ответ...' : 'Напишите ответ или / для бинда...'}
                             className="w-full bg-secondary/50 border border-border rounded-xl pl-[6.5rem] pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
                             onKeyDown={e => {

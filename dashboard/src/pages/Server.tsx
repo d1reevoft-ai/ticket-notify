@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchServerChannels, fetchServerMessages, sendServerMessage } from '../api/server';
 import type { ServerChannel } from '../api/server';
 import type { DiscordMessage } from '../api/tickets';
 import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
-import { Hash, Send, ChevronDown, ChevronRight, Reply, X, Paperclip, Loader2, MessageSquare } from 'lucide-react';
+import { Hash, Send, ChevronDown, ChevronRight, Reply, X, Paperclip, Loader2, MessageSquare, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Server() {
@@ -188,6 +188,26 @@ export default function Server() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+    // ── Clipboard paste for images ────────────────────────
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = Array.from(e.clipboardData?.items || []);
+        for (const item of items) {
+            if (!item.type.startsWith('image/')) continue;
+            const file = item.getAsFile();
+            if (!file || file.size > 8 * 1024 * 1024) continue;
+            if (attachments.length >= 10) break;
+            e.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (typeof ev.target?.result === 'string') {
+                    const name = `paste-${Date.now()}.${file.type.split('/')[1] || 'png'}`;
+                    setAttachments(prev => [...prev, { name, data: ev.target!.result as string, mime: file.type }]);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     // ── Group channels by category ────────────────────────
     const grouped = new Map<string | null, ServerChannel[]>();
     for (const ch of channels) {
@@ -207,7 +227,10 @@ export default function Server() {
                 transition={{ duration: 0.3 }}
                 className="w-60 shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col mr-4"
             >
-                <div className="px-4 py-3 border-b border-border bg-card/50">
+                <div className="px-3 py-3 border-b border-border bg-card/50 flex items-center gap-2">
+                    <Link to="/tickets" className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0">
+                        <ArrowLeft className="w-4 h-4" />
+                    </Link>
                     <h3 className="font-rajdhani font-bold text-sm uppercase tracking-wider text-muted-foreground">
                         Каналы сервера
                     </h3>
@@ -402,6 +425,7 @@ export default function Server() {
                                     ref={inputRef}
                                     value={content}
                                     onChange={e => setContent(e.target.value)}
+                                    onPaste={handlePaste}
                                     placeholder={replyTo ? 'Напишите ответ...' : 'Напишите сообщение...'}
                                     className="w-full bg-secondary/50 border border-border rounded-xl pl-14 pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
                                     onKeyDown={e => {
