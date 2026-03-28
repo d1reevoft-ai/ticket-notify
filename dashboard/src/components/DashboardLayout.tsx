@@ -30,8 +30,8 @@ export default function DashboardLayout() {
                     <main className={`dashboard-main flex-1 z-0 overflow-y-auto custom-scrollbar ${isServerPage ? 'p-3 md:p-4' : 'p-4 md:p-6'}`}>
                         <Outlet />
                     </main>
-                    {!isServerPage && membersVisible && (
-                        <div className="hidden lg:block">
+                    {membersVisible && (
+                        <div className="hidden lg:block relative z-10">
                             <MemberPanel onClose={() => setMembersVisible(false)} />
                         </div>
                     )}
