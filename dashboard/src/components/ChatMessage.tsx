@@ -71,9 +71,8 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
     return (
         <>
         <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
             className={cn("flex w-full mb-6 group/msg", isStaff ? "justify-end" : "justify-start")}
         >
             <div className={cn("flex max-w-[80%] gap-4", isStaff && "flex-row-reverse")}>
@@ -92,7 +91,7 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                 </div>
 
                 <div className={cn("flex flex-col relative", isStaff ? "items-end" : "items-start")}>
-                    <div className="flex items-baseline gap-2 mb-1.5 px-1">
+                    <div className={cn("flex items-baseline gap-2 mb-1.5 px-1", isStaff && "flex-row-reverse")}>
                         <span className={cn("text-sm font-semibold", isStaff ? "text-primary" : "text-foreground")}>
                             {message.author.global_name || message.author.username}
                         </span>
@@ -151,7 +150,7 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                             </div>
                         ) : (
                             <div className={cn(
-                                "p-3.5 rounded-2xl relative shadow-sm text-sm whitespace-pre-wrap leading-relaxed",
+                                "p-3.5 rounded-2xl relative shadow-sm text-sm whitespace-pre-wrap leading-relaxed text-left max-w-full",
                                 isStaff
                                     ? "bg-primary text-primary-foreground rounded-tr-sm"
                                     : "bg-secondary text-foreground rounded-tl-sm border border-border/50"
