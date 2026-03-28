@@ -2,14 +2,15 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import type { DiscordMessage } from '../api/tickets';
 import { cn } from '../lib/utils';
-import { motion } from 'framer-motion';
-import { Reply, Pencil, CornerDownRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Reply, Pencil, CornerDownRight, X, Maximize2 } from 'lucide-react';
+import { useState } from 'react';
 
 const IMAGE_URL_RE = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp)(?:\?[^\s]*)?)/gi;
 const URL_RE = /(https?:\/\/[^\s]+)/gi;
 const MENTION_RE = /<@[!&]?(\d+)>/g;
 
-function renderContent(text: string, mentionMap?: Record<string, string>) {
+function renderContent(text: string, mentionMap: Record<string, string> | undefined, onImageClick: (url: string) => void) {
     let resolved = text;
     if (mentionMap) {
         resolved = text.replace(MENTION_RE, (match, id) => {
@@ -25,7 +26,7 @@ function renderContent(text: string, mentionMap?: Record<string, string>) {
     return parts.map((part, i) => {
         if (IMAGE_URL_RE.test(part)) {
             IMAGE_URL_RE.lastIndex = 0;
-            return <img key={i} src={part} alt="" className="rounded-lg max-h-64 mt-1 mb-1 object-contain" />;
+            return <img key={i} src={part} alt="" className="rounded-lg max-h-64 mt-1 mb-1 object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={(e) => { e.preventDefault(); onImageClick(part); }} />;
         }
         const fragments = part.split(/(@@MENTION:(?:role|user):[^@]+@@)/g);
         return fragments.map((frag, fi) => {
@@ -62,13 +63,17 @@ type ChatMessageProps = {
 
 export default function ChatMessage({ message, isStaff, mentionMap, onReply, onEdit, canEdit }: ChatMessageProps) {
     const isBot = message.author.bot;
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+
     const contentIsImageOnly = message.content && IMAGE_URL_RE.test(message.content) && message.content.trim().match(IMAGE_URL_RE)?.join('').length === message.content.trim().length;
     IMAGE_URL_RE.lastIndex = 0;
 
     return (
+        <>
         <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={{ opacity: 0, scale: 0.98, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
             className={cn("flex w-full mb-6 group/msg", isStaff ? "justify-end" : "justify-start")}
         >
             <div className={cn("flex max-w-[80%] gap-4", isStaff && "flex-row-reverse")}>
@@ -141,8 +146,8 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
 
                     {message.content ? (
                         contentIsImageOnly ? (
-                            <div className="rounded-2xl overflow-hidden">
-                                {renderContent(message.content, mentionMap)}
+                            <div className="rounded-2xl overflow-hidden shadow-sm inline-block">
+                                {renderContent(message.content, mentionMap, setPreviewImage)}
                             </div>
                         ) : (
                             <div className={cn(
@@ -151,7 +156,7 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                                     ? "bg-primary text-primary-foreground rounded-tr-sm"
                                     : "bg-secondary text-foreground rounded-tl-sm border border-border/50"
                             )}>
-                                {renderContent(message.content, mentionMap)}
+                                {renderContent(message.content, mentionMap, setPreviewImage)}
                             </div>
                         )
                     ) : null}
@@ -175,8 +180,22 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                                             ))}
                                         </div>
                                     )}
-                                    {embed.image && <img src={embed.image.url} alt="" className="rounded mt-2 max-h-48 object-cover" />}
-                                    {embed.thumbnail && <img src={embed.thumbnail.url} alt="" className="rounded mt-1 max-h-16 object-cover" />}
+                                    {embed.image && (
+                                        <img 
+                                            src={embed.image.url} 
+                                            alt="" 
+                                            className="rounded mt-2 max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
+                                            onClick={(e) => { e.preventDefault(); setPreviewImage(embed.image!.url); }}
+                                        />
+                                    )}
+                                    {embed.thumbnail && (
+                                        <img 
+                                            src={embed.thumbnail.url} 
+                                            alt="" 
+                                            className="rounded mt-1 max-h-16 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
+                                            onClick={(e) => { e.preventDefault(); setPreviewImage(embed.thumbnail!.url); }}
+                                        />
+                                    )}
                                     {embed.footer && <p className="text-[10px] text-muted-foreground mt-2">{embed.footer.text}</p>}
                                 </div>
                             </div>
@@ -197,12 +216,23 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                                     href={att.url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="block rounded-lg overflow-hidden border border-white/20 relative group"
+                                    onClick={(e) => {
+                                        if (att.content_type?.startsWith('image/')) {
+                                            e.preventDefault();
+                                            setPreviewImage(att.url);
+                                        }
+                                    }}
+                                    className="block rounded-lg overflow-hidden border border-border/50 bg-secondary/30 relative group cursor-pointer"
                                 >
                                     {att.content_type?.startsWith('image/') ? (
-                                        <img src={att.url} alt="attachment" className="max-h-48 object-cover group-hover:opacity-90 transition-opacity" />
+                                        <div className="relative isolate">
+                                            <img src={att.url} alt="attachment" className="max-h-48 object-cover group-hover:opacity-90 transition-opacity" />
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                <Maximize2 className="text-white opacity-0 group-hover:opacity-100 w-6 h-6 drop-shadow-md" />
+                                            </div>
+                                        </div>
                                     ) : (
-                                        <div className="p-3 bg-black/20 italic text-sm underline group-hover:bg-black/30 transition-colors">
+                                        <div className="p-3 italic text-sm underline group-hover:bg-secondary/60 transition-colors">
                                             Вложение: {att.filename}
                                         </div>
                                     )}
@@ -213,5 +243,34 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                 </div>
             </div>
         </motion.div>
+
+        <AnimatePresence>
+            {previewImage && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setPreviewImage(null)}
+                    className="fixed inset-0 z-[100] bg-background/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+                >
+                    <button
+                        onClick={() => setPreviewImage(null)}
+                        className="absolute top-6 right-6 p-3 bg-secondary/80 hover:bg-secondary rounded-full text-foreground/80 hover:text-foreground transition-colors z-[101]"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                    <motion.img
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        src={previewImage}
+                        alt="Preview"
+                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                    />
+                </motion.div>
+            )}
+        </AnimatePresence>
+        </>
     );
 }
