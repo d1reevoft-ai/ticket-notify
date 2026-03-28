@@ -29,15 +29,40 @@ function createFaqRoutes(db, botManager) {
         if (!topic) return res.status(400).json({ error: 'Topic is required' });
 
         try {
-            // Fetch some recent closed tickets that match the topic roughly
-            const closedRows = bot.db.prepare(`
-                SELECT channel_id FROM closed_tickets
-                WHERE channel_name LIKE ? OR opener_username LIKE ?
-                ORDER BY closed_at DESC LIMIT ?
-            `).all(`%${topic}%`, `%${topic}%`, limit);
+            // Strategy 1: Search message content in ticket_messages for the topic keyword
+            // Get channel_ids that have messages containing the topic
+            let closedRows;
+
+            const matchingChannels = bot.db.prepare(`
+                SELECT DISTINCT tm.channel_id 
+                FROM ticket_messages tm
+                INNER JOIN closed_tickets ct ON ct.channel_id = tm.channel_id
+                WHERE tm.content LIKE ?
+                ORDER BY ct.closed_at DESC
+                LIMIT ?
+            `).all(`%${topic}%`, limit);
+
+            if (matchingChannels.length > 0) {
+                closedRows = matchingChannels;
+            } else {
+                // Strategy 2: Also try channel_name and opener_username
+                closedRows = bot.db.prepare(`
+                    SELECT channel_id FROM closed_tickets
+                    WHERE channel_name LIKE ? OR opener_username LIKE ?
+                    ORDER BY closed_at DESC LIMIT ?
+                `).all(`%${topic}%`, `%${topic}%`, limit);
+            }
+
+            // Strategy 3: If still nothing, just take the most recent closed tickets
+            if (closedRows.length === 0) {
+                closedRows = bot.db.prepare(`
+                    SELECT channel_id FROM closed_tickets
+                    ORDER BY closed_at DESC LIMIT ?
+                `).all(limit);
+            }
 
             if (closedRows.length === 0) {
-                return res.status(404).json({ error: 'No relevant closed tickets found for this topic to analyze.' });
+                return res.status(404).json({ error: 'No closed tickets found in the archive.' });
             }
 
             let combinedContext = '';
@@ -50,20 +75,20 @@ function createFaqRoutes(db, botManager) {
             }
 
             if (!combinedContext.trim()) {
-                return res.status(404).json({ error: 'Found relevant tickets, but they have no messages archived.' });
+                return res.status(404).json({ error: 'Found closed tickets, but they have no messages archived.' });
             }
 
             // In gateway.js we have a requestAiAnswer function
             const { requestAiAnswer } = require('../bot/gateway');
             
-            const prompt = `You are a helpful IT support knowledge base author. 
-Based on the following past support ticket transcripts about the topic "${topic}", write a comprehensive, clear, and professional FAQ article. 
-The article should have a title and a markdown-formatted body explaining the problem and how to solve it based ONLY on the provided tickets.
+            const prompt = `Ты — автор базы знаний для техподдержки. На основе приведённых ниже расшифровок закрытых тикетов на тему "${topic}", напиши подробную, понятную и профессиональную статью для FAQ.
+Статья должна иметь заголовок и тело в формате Markdown. Объясни проблему и как её решить, основываясь ТОЛЬКО на предоставленных тикетах.
+Пиши на русском языке.
 
-Past Tickets:
+Прошлые тикеты:
 ${combinedContext.substring(0, 15000)}
 
-Please return only the markdown content. The first line should be the title starting with "# ".`;
+Верни только markdown. Первая строка должна быть заголовком, начинающимся с "# ".`;
 
             bot.log(`🧠 Generating FAQ article for topic: "${topic}" using ${closedRows.length} tickets...`);
             
