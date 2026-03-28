@@ -6,7 +6,7 @@ import type { ServerChannel } from '../api/server';
 import type { DiscordMessage } from '../api/tickets';
 import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
-import { Hash, Send, ChevronDown, ChevronRight, Reply, X, Paperclip, Loader2, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Hash, Send, ChevronDown, ChevronRight, Reply, X, Paperclip, Loader2, MessageSquare, ArrowLeft, ArrowDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Server() {
@@ -27,8 +27,10 @@ export default function Server() {
     // ── Messages ──────────────────────────────────────────
     const [messages, setMessages] = useState<DiscordMessage[]>([]);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [loadingOlder, setLoadingOlder] = useState(false);
+    const [showScrollBottom, setShowScrollBottom] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const prevScrollHeight = useRef(0);
 
@@ -55,6 +57,7 @@ export default function Server() {
     useEffect(() => {
         if (!channelId) { setMessages([]); setHasMore(true); return; }
         setIsLoadingMessages(true);
+        setInitialLoadDone(false);
         setMessages([]);
         setHasMore(true);
         setReplyTo(null);
@@ -64,10 +67,18 @@ export default function Server() {
             setMessages(data.messages);
             setHasMore(data.messages.length >= 50);
             setIsLoadingMessages(false);
-            setTimeout(() => {
+            
+            requestAnimationFrame(() => {
                 if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            }, 50);
-        }).catch(() => setIsLoadingMessages(false));
+                setTimeout(() => {
+                    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                    setInitialLoadDone(true);
+                }, 50);
+            });
+        }).catch(() => {
+            setIsLoadingMessages(false);
+            setInitialLoadDone(true);
+        });
     }, [channelId]);
 
     // ── Scroll to bottom on new messages ──────────────────
@@ -106,11 +117,14 @@ export default function Server() {
 
     // ── Scroll handler for infinite scroll ────────────────
     const handleScroll = useCallback(() => {
-        if (!scrollRef.current) return;
-        if (scrollRef.current.scrollTop < 100 && hasMore && !loadingOlder) {
+        if (!scrollRef.current || !initialLoadDone) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+        setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 300);
+
+        if (scrollTop < 100 && hasMore && !loadingOlder) {
             loadOlder();
         }
-    }, [hasMore, loadingOlder, loadOlder]);
+    }, [hasMore, loadingOlder, loadOlder, initialLoadDone]);
 
     // ── Socket.io real-time ───────────────────────────────
     useEffect(() => {
@@ -330,12 +344,37 @@ export default function Server() {
                             </div>
                         </div>
 
-                        {/* Messages */}
-                        <div
-                            ref={scrollRef}
-                            onScroll={handleScroll}
-                            className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar scroll-smooth"
-                        >
+                        {/* Messages Wrapper */}
+                        <div className="flex-1 min-h-0 relative">
+                            {/* Scroll to bottom FAB */}
+                            <AnimatePresence>
+                                {showScrollBottom && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        className="absolute bottom-6 right-6 z-20"
+                                    >
+                                        <button
+                                            onClick={() => {
+                                                if (scrollRef.current) {
+                                                    scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+                                                }
+                                            }}
+                                            className="w-12 h-12 flex items-center justify-center bg-card border shadow-xl border-border/50 text-foreground rounded-full hover:bg-secondary transition-colors"
+                                            title="Вниз"
+                                        >
+                                            <ArrowDown className="w-5 h-5 text-muted-foreground transition-colors hover:text-foreground" />
+                                        </button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <div
+                                ref={scrollRef}
+                                onScroll={handleScroll}
+                                className={`absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 transition-opacity duration-300 ${initialLoadDone ? 'opacity-100' : 'opacity-0'}`}
+                            >
                             {/* Load older indicator */}
                             {loadingOlder && (
                                 <div className="flex justify-center py-3">
@@ -368,6 +407,7 @@ export default function Server() {
                                     />
                                 ))
                             )}
+                        </div>
                         </div>
 
                         {/* Input area */}
