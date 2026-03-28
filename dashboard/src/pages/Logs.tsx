@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchLogs } from '../api/stats';
+import { semanticSearchLogs } from '../api/faq';
 import { useSocket } from '../hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ScrollText, MessageSquare, Clock, Link2, Shield, Settings,
     Search, Zap, Bot, AlertTriangle, Wifi, WifiOff, Timer,
-    MessageCircle, SmilePlus, Sparkles, Filter, X
+    MessageCircle, SmilePlus, Sparkles, Filter, X, Brain, Loader2
 } from 'lucide-react';
 
 const typeConfig: Record<string, {
@@ -90,6 +91,13 @@ export default function Logs() {
     const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
     const listRef = useRef<HTMLDivElement>(null);
 
+    // -- AI Semantic Search --
+    const [aiMode, setAiMode] = useState(false);
+    const [aiQuery, setAiQuery] = useState('');
+    const [aiResults, setAiResults] = useState<LogEntry[] | null>(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
+
     const { data: logs, isLoading } = useQuery({
         queryKey: ['logs'],
         queryFn: () => fetchLogs(2000),
@@ -124,15 +132,18 @@ export default function Logs() {
     }, [logs, filter, search]);
 
     const groupedLogs = useMemo(() => {
+        const source = aiMode && aiResults !== null ? aiResults : filteredLogs;
         const groups: { label: string; logs: LogEntry[] }[] = [];
         let currentLabel = '';
-        for (const log of filteredLogs) {
+        for (const log of source) {
             const label = getDateLabel(log.ts);
             if (label !== currentLabel) { currentLabel = label; groups.push({ label, logs: [] }); }
             groups[groups.length - 1].logs.push(log);
         }
         return groups;
-    }, [filteredLogs]);
+    }, [filteredLogs, aiMode, aiResults]);
+
+    const displayLogs = aiMode && aiResults !== null ? aiResults : filteredLogs;
 
     const typeCounts = useMemo(() => {
         if (!logs) return {};
@@ -142,6 +153,26 @@ export default function Logs() {
     }, [logs]);
 
     const clearSearch = useCallback(() => setSearch(''), []);
+
+    const handleAiSearch = async () => {
+        if (!aiQuery.trim()) return;
+        setAiLoading(true);
+        setAiError(null);
+        try {
+            const results = await semanticSearchLogs(aiQuery);
+            setAiResults(results.map((r: any) => ({
+                ts: r.timestamp || r.ts,
+                type: r.type || 'system',
+                message: r.msg || r.message || '',
+                details: r.details,
+            })));
+        } catch (e: any) {
+            setAiError(e?.response?.data?.error || 'Ошибка AI поиска');
+            setAiResults([]);
+        } finally {
+            setAiLoading(false);
+        }
+    };
 
     if (isLoading) return (
         <div className="flex items-center justify-center h-64">
@@ -160,57 +191,126 @@ export default function Logs() {
                     <div>
                         <h1 className="text-xl md:text-2xl font-rajdhani font-bold text-foreground">Журнал действий</h1>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                            {filteredLogs.length} из {logs?.length || 0} записей
-                            {socket ? (
+                            {displayLogs.length} из {logs?.length || 0} записей
+                            {aiMode && aiResults !== null && (
+                                <span className="inline-flex items-center gap-1 ml-2 text-purple-400">
+                                    <Brain className="w-3 h-3" /> AI результаты
+                                </span>
+                            )}
+                            {!aiMode && socket ? (
                                 <span className="inline-flex items-center gap-1 ml-2 text-emerald-400">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
                                 </span>
-                            ) : (
+                            ) : !aiMode ? (
                                 <span className="inline-flex items-center gap-1 ml-2 text-muted-foreground">
                                     <WifiOff className="w-3 h-3" /> Оффлайн
                                 </span>
-                            )}
+                            ) : null}
                         </p>
                     </div>
                 </div>
-                <div className="relative group">
-                    <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-primary transition-colors" />
-                    <input type="text" placeholder="Поиск по логам..." value={search} onChange={e => setSearch(e.target.value)}
-                        className="pl-9 pr-8 py-2 bg-secondary border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64 transition-all" />
-                    {search && (
-                        <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                            <X className="w-3.5 h-3.5" />
-                        </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => { setAiMode(v => !v); setAiResults(null); setAiError(null); }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                            aiMode
+                                ? 'bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 border-purple-500/30 text-purple-300 shadow-sm shadow-purple-500/10'
+                                : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+                        }`}
+                    >
+                        <Brain className="w-3.5 h-3.5" />
+                        AI Поиск
+                    </button>
+                    {!aiMode && (
+                        <div className="relative group">
+                            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-primary transition-colors" />
+                            <input type="text" placeholder="Поиск по логам..." value={search} onChange={e => setSearch(e.target.value)}
+                                className="pl-9 pr-8 py-2 bg-secondary border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64 transition-all" />
+                            {search && (
+                                <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Filter chips */}
-            <div className="flex flex-wrap gap-1.5 md:gap-2">
-                {filterGroups.map((f) => {
-                    const Icon = f.icon;
-                    const count = f.key === 'all' ? (logs?.length || 0) : (typeCounts[f.key] || 0);
-                    const isActive = filter === f.key;
-                    const cfg = typeConfig[f.key];
-                    return (
-                        <button key={f.key} onClick={() => setFilter(f.key)}
-                            className={`inline-flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[11px] md:text-xs font-medium transition-all duration-200 border
-                                ${isActive ? `${cfg?.bg || 'bg-primary/10'} ${cfg?.border || 'border-primary/30'} ${cfg?.labelColor || 'text-primary'} shadow-sm` : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
-                            <Icon className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                            <span className="hidden sm:inline">{f.label}</span>
-                            {count > 0 && <span className={`ml-0.5 px-1 md:px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-white/10' : 'bg-secondary'}`}>{count}</span>}
-                        </button>
-                    );
-                })}
-            </div>
+            {/* AI Semantic Search Bar */}
+            <AnimatePresence>
+                {aiMode && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="bg-gradient-to-r from-purple-500/5 to-fuchsia-500/5 border border-purple-500/20 rounded-xl p-4 flex flex-col sm:flex-row items-center gap-3">
+                            <div className="flex items-center gap-2 flex-1 w-full">
+                                <Brain className="w-5 h-5 text-purple-400 shrink-0" />
+                                <input
+                                    type="text"
+                                    value={aiQuery}
+                                    onChange={e => setAiQuery(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleAiSearch()}
+                                    placeholder='Опишите что ищете: "ошибки оплаты вчера", "AI ответы на тикеты"...'
+                                    className="flex-1 px-3 py-2.5 bg-secondary/80 border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50 w-full"
+                                />
+                            </div>
+                            <button
+                                onClick={handleAiSearch}
+                                disabled={!aiQuery.trim() || aiLoading}
+                                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-all shadow-lg shadow-purple-500/20 shrink-0"
+                            >
+                                {aiLoading ? (
+                                    <><Loader2 className="w-4 h-4 animate-spin" /> Анализ...</>
+                                ) : (
+                                    <><Sparkles className="w-4 h-4" /> Найти</>
+                                )}
+                            </button>
+                        </div>
+                        {aiError && (
+                            <div className="mt-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                                {aiError}
+                            </div>
+                        )}
+                        {aiResults !== null && !aiLoading && (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                                AI нашел {aiResults.length} подходящих записей
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Filter chips - hidden in AI mode */}
+            {!aiMode && (
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                    {filterGroups.map((f) => {
+                        const Icon = f.icon;
+                        const count = f.key === 'all' ? (logs?.length || 0) : (typeCounts[f.key] || 0);
+                        const isActive = filter === f.key;
+                        const cfg = typeConfig[f.key];
+                        return (
+                            <button key={f.key} onClick={() => setFilter(f.key)}
+                                className={`inline-flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[11px] md:text-xs font-medium transition-all duration-200 border
+                                    ${isActive ? `${cfg?.bg || 'bg-primary/10'} ${cfg?.border || 'border-primary/30'} ${cfg?.labelColor || 'text-primary'} shadow-sm` : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
+                                <Icon className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                <span className="hidden sm:inline">{f.label}</span>
+                                {count > 0 && <span className={`ml-0.5 px-1 md:px-1.5 py-0.5 rounded-md text-[10px] font-bold ${isActive ? 'bg-white/10' : 'bg-secondary'}`}>{count}</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Log list */}
             <div ref={listRef} className="flex-1 overflow-y-auto pr-1 pb-6 custom-scrollbar">
-                {filteredLogs.length === 0 ? (
+                {displayLogs.length === 0 ? (
                     <div className="h-64 flex flex-col items-center justify-center text-muted-foreground border-2 border-dashed border-border rounded-xl">
                         <ScrollText className="w-12 h-12 mb-4 opacity-30" />
-                        <p className="font-medium text-lg">{search ? 'Ничего не найдено' : 'Пока нет логов'}</p>
-                        <p className="text-sm mt-1">{search ? 'Попробуйте изменить поисковый запрос' : 'Действия будут появляться здесь в реальном времени'}</p>
+                        <p className="font-medium text-lg">{search || (aiMode && aiResults !== null) ? 'Ничего не найдено' : 'Пока нет логов'}</p>
+                        <p className="text-sm mt-1">{search ? 'Попробуйте изменить поисковый запрос' : aiMode ? 'Введите запрос и нажмите «Найти»' : 'Действия будут появляться здесь в реальном времени'}</p>
                     </div>
                 ) : (
                     <div className="space-y-6">

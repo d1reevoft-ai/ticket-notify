@@ -2156,6 +2156,28 @@ function handleDispatch(bot, event, d) {
             break;
         }
 
+        case 'MESSAGE_REACTION_ADD': {
+            if (d.guild_id) {
+                emitDashboard(bot, 'server:message_reaction_add', { channelId: d.channel_id, guildId: d.guild_id, messageId: d.message_id, reaction: d });
+            }
+            if (d.guild_id !== guildId) break;
+            const record = bot.activeTickets.get(d.channel_id);
+            if (!record) break;
+            emitDashboard(bot, 'ticket:message_reaction_add', { channelId: d.channel_id, messageId: d.message_id, reaction: d });
+            break;
+        }
+
+        case 'MESSAGE_REACTION_REMOVE': {
+            if (d.guild_id) {
+                emitDashboard(bot, 'server:message_reaction_remove', { channelId: d.channel_id, guildId: d.guild_id, messageId: d.message_id, reaction: d });
+            }
+            if (d.guild_id !== guildId) break;
+            const record = bot.activeTickets.get(d.channel_id);
+            if (!record) break;
+            emitDashboard(bot, 'ticket:message_reaction_remove', { channelId: d.channel_id, messageId: d.message_id, reaction: d });
+            break;
+        }
+
         case 'GUILD_MEMBER_ADD': {
             if (d.guild_id !== guildId) break;
             if (d.user) bot.guildMembersCache.set(d.user.id, d);
@@ -2826,7 +2848,18 @@ async function generateTicketSummary(bot, channelId, messages) {
 
 async function draftTicketReply(bot, channelId, messages) {
     const cfg = bot.config || {};
-    const systemPrompt = "Ты — AI-помощник (саппорт) для приватного сервера. Твоя задача — составить грамотный, вежливый и полезный ответ на последний вопрос пользователя в тикете. Опирайся на историю сообщений. Отвечай кратко, от 1 до 3 предложений. Не используй приветствия, так как этот текст будет вставлен в текстовое поле модератора для отправки.";
+
+    // --- Pull FAQ articles from the database as knowledge base context ---
+    let faqContext = '';
+    try {
+        const articles = bot.db.prepare('SELECT title, content FROM faq_articles ORDER BY created_at DESC LIMIT 10').all();
+        if (articles.length > 0) {
+            const faqText = articles.map(a => `### ${a.title}\n${a.content}`).join('\n\n');
+            faqContext = `\n\n[БАЗА ЗНАНИЙ — используй эту информацию для ответа если она релевантна вопросу пользователя]\n${faqText.substring(0, 6000)}`;
+        }
+    } catch (_e) { /* table might not exist yet */ }
+
+    const systemPrompt = `Ты — AI-помощник (саппорт) для приватного сервера. Твоя задача — составить грамотный, вежливый и полезный ответ на последний вопрос пользователя в тикете. Опирайся на историю сообщений и базу знаний (если она предоставлена). Отвечай кратко, от 1 до 3 предложений. Не используй приветствия, так как этот текст будет вставлен в текстовое поле модератора для отправки.${faqContext}`;
 
     const recentMsgs = messages.slice(-20);
     const formatted = [{ role: 'system', content: systemPrompt }];
@@ -2849,4 +2882,4 @@ async function draftTicketReply(bot, channelId, messages) {
     return answerText;
 }
 
-module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply };
+module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply, requestAiAnswer };

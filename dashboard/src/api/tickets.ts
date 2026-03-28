@@ -59,6 +59,14 @@ export type DiscordMessage = {
             global_name?: string;
         };
     };
+    reactions?: {
+        count: number;
+        me: boolean;
+        emoji: {
+            id: string | null;
+            name: string;
+        };
+    }[];
 };
 
 export const fetchTickets = async (): Promise<Ticket[]> => {
@@ -82,6 +90,14 @@ export const sendTicketMessage = async (id: string, content: string, replyTo?: s
 
 export const editTicketMessage = async (id: string, msgId: string, content: string): Promise<void> => {
     await client.patch(`/tickets/${id}/messages/${msgId}`, { content });
+};
+
+export const addReaction = async (id: string, msgId: string, emoji: string): Promise<void> => {
+    await client.put(`/tickets/${id}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`);
+};
+
+export const removeReaction = async (id: string, msgId: string, emoji: string): Promise<void> => {
+    await client.delete(`/tickets/${id}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`);
 };
 
 export const generateTicketSummary = async (id: string): Promise<{ summary: string }> => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary, useCloseTicket, useSmartReply } from '../hooks/useTickets';
+import { addReaction, removeReaction } from '../api/tickets';
 import { fetchBinds, fetchSettings } from '../api/stats';
 import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
@@ -238,6 +239,17 @@ export default function TicketDetail() {
         }
     };
 
+    const handleToggleReaction = async (msg: DiscordMessage, emoji: string, add: boolean) => {
+        if (!id) return;
+        try {
+            if (add) {
+                await addReaction(id, msg.id, emoji);
+            } else {
+                await removeReaction(id, msg.id, emoji);
+            }
+        } catch (_e) { }
+    };
+
     const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings });
     const useSkeletons = settings?.useSkeletons ?? true;
 
@@ -420,6 +432,7 @@ export default function TicketDetail() {
                                 onReply={handleReply}
                                 onEdit={handleEdit}
                                 canEdit={isMine || isBotProxy}
+                                onToggleReaction={handleToggleReaction}
                             />
                         );
                     })}

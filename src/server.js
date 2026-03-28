@@ -24,6 +24,7 @@ const BotManager = require('./BotManager');
 const { createAuthRoutes, authenticateToken, JWT_SECRET, sendTelegramMessage } = require('./api/auth');
 const { createProfileRoutes } = require('./api/profile');
 const { createAdminRoutes } = require('./api/admin');
+const { createFaqRoutes } = require('./api/faq');
 const { invalidateSystemPromptCache } = require('./bot/gateway');
 
 // Prefer Railway persistent volume (/data), then env var, then local ./data
@@ -81,6 +82,9 @@ async function main() {
 
     // -- Admin Routes --
     app.use('/api/admin', createAdminRoutes(db));
+
+    // -- FAQ Knowledge Base --
+    app.use('/api/faq', createFaqRoutes(db, botManager));
 
     // -- Helper: get bot for authenticated user --
     function getBot(req, res) {

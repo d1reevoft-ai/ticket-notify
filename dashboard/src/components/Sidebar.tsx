@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ticket, Keyboard, Clock, ScrollText, LogOut, Settings, Bot, TicketX, X, User, Brain, ShieldCheck, FileText, Server } from 'lucide-react';
+import { LayoutDashboard, Ticket, Keyboard, Clock, ScrollText, LogOut, Settings, Bot, TicketX, X, User, Brain, ShieldCheck, FileText, Server, BookOpen } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PanelRightClose } from 'lucide-react';
 
 type NavAccent = 'primary' | 'admin';
 type NavItem = {
@@ -22,6 +23,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     { to: '/closed-tickets', icon: TicketX, label: 'Архив', accent: 'primary' },
     { to: '/autoreplies', icon: Bot, label: 'Авто-ответы', accent: 'primary' },
     { to: '/ai-learning', icon: Brain, label: 'Обучение ИИ', accent: 'primary' },
+    { to: '/faq', icon: BookOpen, label: 'База Знаний', accent: 'primary' },
     { to: '/prompt', icon: FileText, label: 'Промпт', accent: 'primary' },
     { to: '/server', icon: Server, label: 'Сервер', accent: 'primary' },
     { to: '/profile', icon: User, label: 'Профиль', accent: 'primary' },
@@ -33,7 +35,12 @@ const ADMIN_ALIASES = new Set(['d1reevo', 'd1reevof']);
 const ACTIVE_PILL_TRANSITION = { type: 'tween', duration: 0.32, ease: [0.22, 1, 0.36, 1] as const };
 const MOBILE_SIDEBAR_TRANSITION = { type: 'spring', stiffness: 220, damping: 28, mass: 0.8 };
 
-export default function Sidebar() {
+type SidebarProps = {
+    isCollapsed: boolean;
+    onToggleCollapse: () => void;
+};
+
+export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps) {
     const { logout, user } = useAuth();
     const location = useLocation();
     const normalizedUsername = String(user?.username || '').trim().toLowerCase();
@@ -93,11 +100,22 @@ export default function Sidebar() {
                                 )}
                                 <item.icon
                                     className={cn(
-                                        'w-5 h-5 relative z-10',
+                                        'w-5 h-5 relative z-10 shrink-0',
                                         isActive && (isAdminItem ? 'text-purple-400' : 'text-primary')
                                     )}
                                 />
-                                <span className="relative z-10">{item.label}</span>
+                                <AnimatePresence>
+                                    {(!isCollapsed || isMobile) && (
+                                        <motion.span 
+                                            initial={{ opacity: 0, width: 0 }}
+                                            animate={{ opacity: 1, width: 'auto' }}
+                                            exit={{ opacity: 0, width: 0 }}
+                                            className="relative z-10 overflow-hidden whitespace-nowrap"
+                                        >
+                                            {item.label}
+                                        </motion.span>
+                                    )}
+                                </AnimatePresence>
                             </>
                         )}
                     </NavLink>
@@ -108,10 +126,21 @@ export default function Sidebar() {
 
     const renderSidebarContent = (isMobile: boolean) => (
         <>
-            <div className="flex items-center justify-between px-2 mb-8 mt-2">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">T</div>
-                    <h1 className="text-2xl font-rajdhani font-bold tracking-wider uppercase text-foreground">Notifier</h1>
+            <div className={cn("flex items-center justify-between px-2 mb-8 mt-2", isCollapsed && !isMobile ? "justify-center" : "")}>
+                <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-8 h-8 rounded bg-primary flex items-center justify-center shrink-0 text-primary-foreground font-bold text-xl">T</div>
+                    <AnimatePresence>
+                        {(!isCollapsed || isMobile) && (
+                            <motion.h1 
+                                initial={{ opacity: 0, width: 0 }}
+                                animate={{ opacity: 1, width: 'auto' }}
+                                exit={{ opacity: 0, width: 0 }}
+                                className="text-2xl font-rajdhani font-bold tracking-wider uppercase text-foreground whitespace-nowrap"
+                            >
+                                Notifier
+                            </motion.h1>
+                        )}
+                    </AnimatePresence>
                 </div>
                 <button onClick={() => setMobileOpen(false)} className="md:hidden p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground">
                     <X className="w-5 h-5" />
@@ -120,21 +149,50 @@ export default function Sidebar() {
 
             {renderNav(isMobile)}
 
-            <button
-                onClick={logout}
-                className="sidebar-logout flex items-center gap-3 px-3 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors font-medium mt-auto"
-            >
-                <LogOut className="w-5 h-5" />
-                <span>Выйти</span>
-            </button>
+            <div className="mt-auto flex flex-col gap-2">
+                {!isMobile && (
+                    <button
+                        onClick={onToggleCollapse}
+                        className="flex items-center justify-center p-3 text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-md transition-colors"
+                        title={isCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
+                    >
+                        <motion.div animate={{ rotate: isCollapsed ? 180 : 0 }}>
+                            <PanelRightClose className="w-5 h-5" />
+                        </motion.div>
+                    </button>
+                )}
+                <button
+                    onClick={logout}
+                    className="sidebar-logout flex items-center gap-3 px-3 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors font-medium"
+                    title="Выйти"
+                >
+                    <LogOut className="w-5 h-5 shrink-0" />
+                    <AnimatePresence>
+                        {(!isCollapsed || isMobile) && (
+                            <motion.span
+                                initial={{ opacity: 0, width: 0 }}
+                                animate={{ opacity: 1, width: 'auto' }}
+                                exit={{ opacity: 0, width: 0 }}
+                                className="overflow-hidden whitespace-nowrap"
+                            >
+                                Выйти
+                            </motion.span>
+                        )}
+                    </AnimatePresence>
+                </button>
+            </div>
         </>
     );
 
     return (
         <>
-            <aside className="sidebar-shell hidden md:flex w-64 h-screen bg-card border-r border-border flex-col p-4 fixed left-0 top-0 z-50">
+            <motion.aside 
+                initial={false}
+                animate={{ width: isCollapsed ? 80 : 256 }}
+                className="sidebar-shell hidden md:flex h-screen bg-card border-r border-border flex-col p-4 fixed left-0 top-0 z-50 overflow-hidden"
+            >
                 {renderSidebarContent(false)}
-            </aside>
+            </motion.aside>
 
             <AnimatePresence>
                 {mobileOpen && (
