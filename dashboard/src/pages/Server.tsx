@@ -316,7 +316,7 @@ export default function Server() {
     );
 
     return (
-        <div className="h-[calc(100vh-8rem)] w-full flex gap-4 max-w-full mx-auto relative overflow-hidden">
+        <div className="h-full w-full flex gap-4 max-w-full mx-auto relative overflow-hidden">
             {/* ── Channel List Sidebar (Desktop) ── */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}

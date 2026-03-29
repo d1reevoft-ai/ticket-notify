@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 
-const DASHBOARD_URL = 'https://worker-production-c151.up.railway.app';
+const DASHBOARD_URL = 'https://web-production-2e7e1.up.railway.app';
 
 let mainWindow = null;
 let tray = null;
