@@ -8,7 +8,7 @@ import { useSocket } from '../hooks/useSocket';
 import ChatMessage from '../components/ChatMessage';
 import Skeleton from '../components/Skeleton';
 import type { DiscordMessage } from '../api/tickets';
-import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles, Lock, Paperclip, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, AlertCircle, X, Reply, Pencil, Sparkles, Lock, Paperclip, Loader2, Search, PanelRight, Star, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -45,6 +45,15 @@ export default function TicketDetail() {
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
 
+    // Binds modal & info panel toggle
+    const [showBindsModal, setShowBindsModal] = useState(false);
+    const [bindsSearch, setBindsSearch] = useState('');
+    const [bindsModalIndex, setBindsModalIndex] = useState(0);
+    const bindsSearchRef = useRef<HTMLInputElement>(null);
+    const [showInfoPanel, setShowInfoPanel] = useState(() => {
+        return localStorage.getItem('ticket_info_panel') !== 'hidden';
+    });
+
     const ticket = tickets?.find(t => t.channelId === id);
 
     const bindList = Object.values(binds);
@@ -55,6 +64,31 @@ export default function TicketDetail() {
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => { fetchBinds().then(setBinds).catch(console.error); }, []);
+
+    // Persist info panel state
+    useEffect(() => {
+        localStorage.setItem('ticket_info_panel', showInfoPanel ? 'visible' : 'hidden');
+    }, [showInfoPanel]);
+
+    // Ctrl+W global listener for binds modal
+    useEffect(() => {
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key === 'w') {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowBindsModal(prev => {
+                    if (!prev) {
+                        setBindsSearch('');
+                        setBindsModalIndex(0);
+                        setTimeout(() => bindsSearchRef.current?.focus(), 50);
+                    }
+                    return !prev;
+                });
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKeyDown, true);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+    }, []);
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -291,22 +325,19 @@ export default function TicketDetail() {
         );
     }
 
+    const modalFilteredBinds = bindsSearch
+        ? bindList.filter(b => b.name.toLowerCase().includes(bindsSearch.toLowerCase()) || b.message.toLowerCase().includes(bindsSearch.toLowerCase()))
+        : bindList;
+
+    const selectBindFromModal = (bind: { name: string; message: string }) => {
+        setShowBindsModal(false);
+        setBindsSearch('');
+        if (!id) return;
+        sendMessage({ id, content: bind.message, replyTo: replyTo?.id }).then(() => setReplyTo(null)).catch(() => {});
+    };
+
     return (
         <div className="h-[calc(100vh-8rem)] flex flex-col md:flex-row gap-4 md:gap-6 max-w-[90rem] mx-auto">
-            {/* Binds Sidebar */}
-            <div className="hidden xl:flex w-64 shrink-0 flex-col gap-4 overflow-y-auto custom-scrollbar bg-card border border-border rounded-xl p-4">
-                <h3 className="font-rajdhani font-bold text-lg text-foreground uppercase tracking-wide">Шаблоны</h3>
-                <div className="flex flex-col gap-2">
-                    {bindList.map(b => (
-                        <button key={b.name} onClick={() => selectBind(b)} className="text-left px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg hover:bg-primary/20 hover:border-primary/30 transition-colors">
-                            <span className="font-mono text-primary text-sm font-bold block mb-1">/{b.name}</span>
-                            <span className="text-xs text-muted-foreground line-clamp-2">{b.message}</span>
-                        </button>
-                    ))}
-                    {bindList.length === 0 && <span className="text-sm text-muted-foreground italic">Нет биндов</span>}
-                </div>
-            </div>
-
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm relative">
                 <div className="h-14 md:h-16 px-4 md:px-6 border-b border-border bg-card/50 backdrop-blur flex items-center justify-between shrink-0">
@@ -327,6 +358,13 @@ export default function TicketDetail() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowInfoPanel(v => !v)}
+                            className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors text-muted-foreground hover:text-foreground ${showInfoPanel ? 'bg-secondary/50 hover:bg-secondary' : 'hover:bg-secondary/50'}`}
+                            title={showInfoPanel ? 'Скрыть информацию' : 'Показать информацию'}
+                        >
+                            <PanelRight className="w-4 h-4" />
+                        </button>
                         <button
                             onClick={handleGenerateSummary}
                             disabled={isSummarizing || !messages || messages.length < 2}
@@ -552,10 +590,117 @@ export default function TicketDetail() {
                 </div>
             </div>
 
-            {/* Info Sidebar — hidden on mobile */}
-            <div className="hidden lg:flex w-80 shrink-0 flex-col gap-4 overflow-y-auto custom-scrollbar">
-                <TicketInfoSidebar ticket={ticket} />
-            </div>
+            {/* Info Sidebar — collapsible */}
+            {showInfoPanel && (
+                <div className="hidden lg:flex w-80 shrink-0 flex-col gap-4 overflow-y-auto custom-scrollbar animate-fade-in">
+                    <TicketInfoSidebar ticket={ticket} />
+                </div>
+            )}
+
+            {/* Binds Modal (Ctrl+W) */}
+            <AnimatePresence>
+                {showBindsModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                        onClick={(e) => { if (e.target === e.currentTarget) setShowBindsModal(false); }}
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            transition={{ duration: 0.2, type: 'spring', damping: 25 }}
+                            className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-primary/10 rounded-lg">
+                                        <Zap className="w-5 h-5 text-primary" />
+                                    </div>
+                                    <h3 className="font-rajdhani font-bold text-lg uppercase tracking-wide">Быстрые теги</h3>
+                                </div>
+                                <button
+                                    onClick={() => setShowBindsModal(false)}
+                                    className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 rounded-lg hover:bg-primary/20"
+                                >
+                                    <Send className="w-3.5 h-3.5" />
+                                    Отправка
+                                </button>
+                            </div>
+
+                            {/* Search */}
+                            <div className="px-5 py-3">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        ref={bindsSearchRef}
+                                        type="text"
+                                        value={bindsSearch}
+                                        onChange={(e) => { setBindsSearch(e.target.value); setBindsModalIndex(0); }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Escape') { setShowBindsModal(false); return; }
+                                            if (e.key === 'ArrowDown') { e.preventDefault(); setBindsModalIndex(i => Math.min(i + 1, modalFilteredBinds.length - 1)); return; }
+                                            if (e.key === 'ArrowUp') { e.preventDefault(); setBindsModalIndex(i => Math.max(i - 1, 0)); return; }
+                                            if (e.key === 'Enter' && modalFilteredBinds.length > 0) { e.preventDefault(); selectBindFromModal(modalFilteredBinds[bindsModalIndex]); return; }
+                                        }}
+                                        placeholder="Поиск по имени или тексту..."
+                                        className="w-full bg-secondary/50 border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Counter */}
+                            <div className="px-5 pb-2 flex items-center gap-3 text-xs text-muted-foreground">
+                                <span className="font-semibold">{bindList.length} ТЕГОВ</span>
+                                {bindsSearch && <span className="text-primary">найдено: {modalFilteredBinds.length}</span>}
+                            </div>
+
+                            {/* Binds List */}
+                            <div className="px-3 pb-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                                <div className="flex flex-col gap-1.5">
+                                    {modalFilteredBinds.map((b, idx) => (
+                                        <button
+                                            key={b.name}
+                                            onClick={() => selectBindFromModal(b)}
+                                            className={`text-left px-4 py-3 rounded-xl border transition-all duration-150 group ${
+                                                idx === bindsModalIndex
+                                                    ? 'bg-primary/10 border-primary/30 shadow-sm shadow-primary/10'
+                                                    : 'bg-secondary/30 border-border/50 hover:bg-secondary/60 hover:border-border'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <Star className={`w-4 h-4 ${idx === bindsModalIndex ? 'text-yellow-500 fill-yellow-500' : 'text-yellow-500/50'}`} />
+                                                    <span className="font-bold text-sm text-foreground">{b.name}</span>
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground line-clamp-1 pl-6">
+                                                {b.message.slice(0, 100)}{b.message.length > 100 ? '…' : ''}
+                                            </p>
+                                        </button>
+                                    ))}
+                                    {modalFilteredBinds.length === 0 && (
+                                        <div className="text-center py-8 text-muted-foreground text-sm italic">
+                                            Ничего не найдено
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-5 py-3 border-t border-border flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
+                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↑↓</kbd> навигация</span>
+                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↵</kbd> выбрать</span>
+                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">Esc</kbd> закрыть</span>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
