@@ -272,6 +272,35 @@ class Bot {
         this.stmtInsertMessage = this.db.prepare(
             `INSERT INTO ticket_messages (channel_id, message_id, content, author_id, author_username, author_global_name, author_avatar, author_bot, timestamp, embeds, attachments, member_roles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
+
+        // --- MIGRATION: Load old tickets if this twink account DB is empty ---
+        try {
+            const fs = require('fs');
+            const myCount = this.db.prepare('SELECT COUNT(*) as c FROM closed_tickets').get().c;
+            if (myCount < 50) { // If we have very few tickets, try to inherit from main bot
+                const files = fs.readdirSync(this.dataDir).filter(f => f.startsWith('tickets') && f.endsWith('.db') && f !== path.basename(dbFile));
+                for (const f of files) {
+                    const oldDbPath = path.join(this.dataDir, f);
+                    if (fs.statSync(oldDbPath).size > 20000) { // Only pull from large established DBs (>20KB)
+                        this.log(`📦 Обнаружена старая база истории (${f}). Мигрируем историю тикетов на новый аккаунт...`);
+                        this.db.exec(`ATTACH DATABASE '${oldDbPath}' AS olddb;`);
+                        try {
+                            // Copying closed_tickets
+                            this.db.exec(`INSERT OR IGNORE INTO closed_tickets (id, channel_id, channel_name, opener_id, opener_username, created_at, closed_at, first_staff_reply_at) SELECT id, channel_id, channel_name, opener_id, opener_username, created_at, closed_at, first_staff_reply_at FROM olddb.closed_tickets;`);
+                            // Copying ticket_messages
+                            this.db.exec(`INSERT OR IGNORE INTO ticket_messages (id, channel_id, message_id, content, author_id, author_username, author_global_name, author_avatar, author_bot, timestamp, embeds, attachments, member_roles) SELECT id, channel_id, message_id, content, author_id, author_username, author_global_name, author_avatar, author_bot, timestamp, embeds, attachments, member_roles FROM olddb.ticket_messages;`);
+                        } catch(err) {
+                            this.log(`⚠️ Ошибка миграции таблиц: ${err.message}`);
+                        }
+                        this.db.exec(`DETACH DATABASE olddb;`);
+                    }
+                }
+            }
+        } catch (e) {
+            this.log(`⚠️ Ошибка при миграции истории тикетов: ${e.message}`);
+        }
+        // --- END MIGRATION ---
+
         this.log(`💾 DB ready: ${dbFile}`);
     }
 
