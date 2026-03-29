@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useDeleteTicketMessage, useUserProfile, useTicketSummary, useCloseTicket, useSmartReply } from '../hooks/useTickets';
-import { addReaction, removeReaction } from '../api/tickets';
+import { addReaction, removeReaction, triggerTicketTyping } from '../api/tickets';
 import { fetchBinds, fetchSettings } from '../api/stats';
 import { useSocket } from '../hooks/useSocket';
+import { useTypingIndicator } from '../hooks/useTypingIndicator';
 import ChatMessage from '../components/ChatMessage';
 import Skeleton from '../components/Skeleton';
 import type { DiscordMessage } from '../api/tickets';
@@ -63,6 +64,14 @@ export default function TicketDetail() {
         : bindList;
 
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // ── Typing Indicator ──────────────────────────────────
+    const typingIds = useTypingIndicator(id);
+    const typingNames = typingIds.map(userId => {
+        const msg = messages?.find(m => m.author.id === userId);
+        return msg?.author?.global_name || msg?.author?.username || 'Участник';
+    });
+    const lastTypingTrigger = useRef<number>(0);
 
     useEffect(() => { fetchBinds().then(setBinds).catch(console.error); }, []);
 
@@ -151,6 +160,12 @@ export default function TicketDetail() {
 
     const handleContentChange = (val: string) => {
         setContent(val);
+        // Trigger typing state every 5 seconds
+        if (id && Date.now() - lastTypingTrigger.current > 5000) {
+            lastTypingTrigger.current = Date.now();
+            triggerTicketTyping(id).catch(() => {});
+        }
+
         if (val.startsWith('/') && !editingMsg) {
             const q = val.slice(1);
             setSlashQuery(q); setShowBinds(true); setSlashIndex(0);
@@ -482,6 +497,31 @@ export default function TicketDetail() {
                 </div>
 
                 <div className="p-2 md:p-4 bg-background border-t border-border shrink-0 relative">
+                    {/* Typing indicator */}
+                    <AnimatePresence>
+                        {typingNames.length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                className="absolute -top-6 left-4 text-[11px] font-medium text-foreground/80 flex items-center gap-1.5 z-10"
+                            >
+                                <div className="flex bg-secondary/80 px-2 py-0.5 rounded-full items-center gap-1.5 shadow-sm border border-border/50">
+                                    <span className="flex gap-0.5 mt-0.5">
+                                        <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                        <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                        <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce" />
+                                    </span>
+                                    <span className="truncate max-w-[200px]">
+                                        {typingNames.length > 3 
+                                            ? `${typingNames.length} участников печатают...` 
+                                            : `${typingNames.join(', ')} видят вас... ээ, печатают...`}     
+                                    </span>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     {/* Reply/Edit indicator */}
                     <AnimatePresence>
                         {(replyTo || editingMsg) && (

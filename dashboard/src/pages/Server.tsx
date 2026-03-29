@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchServerChannels, fetchServerMessages, sendServerMessage } from '../api/server';
+import { fetchServerChannels, fetchServerMessages, sendServerMessage, triggerServerTyping } from '../api/server';
 import type { ServerChannel } from '../api/server';
 import type { DiscordMessage } from '../api/tickets';
 import { useSocket } from '../hooks/useSocket';
+import { useTypingIndicator } from '../hooks/useTypingIndicator';
 import ChatMessage from '../components/ChatMessage';
 import { Hash, Send, ChevronDown, ChevronRight, Reply, X, Paperclip, Loader2, MessageSquare, ArrowLeft, ArrowDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,6 +42,14 @@ export default function Server() {
     const [isSending, setIsSending] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // ── Typing Indicator ──────────────────────────────────
+    const typingIds = useTypingIndicator(channelId);
+    const typingNames = typingIds.map(id => {
+        const msg = messages.find(m => m.author.id === id);
+        return msg?.author?.global_name || msg?.author?.username || 'Участник';
+    });
+    const lastTypingTrigger = useRef<number>(0);
 
     // ── Collapsed categories ──────────────────────────────
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -466,6 +475,31 @@ export default function Server() {
 
                         {/* Input area */}
                         <div className="p-2 md:p-4 bg-background border-t border-border shrink-0 relative">
+                            {/* Typing indicator */}
+                            <AnimatePresence>
+                                {typingNames.length > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 10 }}
+                                        className="absolute -top-6 left-4 text-[11px] font-medium text-foreground/80 flex items-center gap-1.5 z-10"
+                                    >
+                                        <div className="flex bg-secondary/80 px-2 py-0.5 rounded-full items-center gap-1.5 shadow-sm border border-border/50">
+                                            <span className="flex gap-0.5 mt-0.5">
+                                                <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                                <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                                <span className="w-1 h-1 bg-foreground/60 rounded-full animate-bounce" />
+                                            </span>
+                                            <span className="truncate max-w-[200px]">
+                                                {typingNames.length > 3 
+                                                    ? `${typingNames.length} участников печатают...` 
+                                                    : `${typingNames.join(', ')} видят вас... ээ, печатают...`}     
+                                            </span>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
                             {/* Reply indicator */}
                             <AnimatePresence>
                                 {replyTo && (
@@ -518,7 +552,14 @@ export default function Server() {
                                 <textarea
                                     ref={inputRef}
                                     value={content}
-                                    onChange={e => setContent(e.target.value)}
+                                    onChange={e => {
+                                        setContent(e.target.value);
+                                        // Trigger typing state every 5 seconds
+                                        if (channelId && Date.now() - lastTypingTrigger.current > 5000) {
+                                            lastTypingTrigger.current = Date.now();
+                                            triggerServerTyping(channelId).catch(() => {});
+                                        }
+                                    }}
                                     onPaste={handlePaste}
                                     placeholder={replyTo ? 'Напишите ответ...' : 'Напишите сообщение...'}
                                     className="w-full bg-secondary/50 border border-border rounded-xl pl-12 md:pl-14 pr-[3.5rem] md:pr-16 py-3 md:py-4 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm md:text-base leading-snug"

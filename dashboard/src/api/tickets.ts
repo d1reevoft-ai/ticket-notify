@@ -136,3 +136,7 @@ export const closeTicket = async (id: string): Promise<{ ok: boolean; error?: st
     const { data } = await client.post(`/tickets/${id}/close`);
     return data;
 };
+
+export const triggerTicketTyping = async (id: string): Promise<void> => {
+    await client.post(`/tickets/${id}/typing`);
+};

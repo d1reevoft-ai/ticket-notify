@@ -674,6 +674,19 @@ class Bot {
         });
     }
 
+    async triggerDiscordTyping(channelId) {
+        const authHeader = this.getDiscordAuthorizationHeader();
+        const url = `https://discord.com/api/v9/channels/${channelId}/typing`;
+        return new Promise((resolve, reject) => {
+            const u = new URL(url);
+            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { Authorization: authHeader, 'User-Agent': 'Mozilla/5.0', 'Content-Length': '0' } }, res => {
+                let chunks = ''; res.on('data', c => chunks += c);
+                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
+            });
+            req.on('error', reject); req.end();
+        });
+    }
+
     async fetchChannelMessages(channelId, limit = 100, before = null) {
         const authHeader = this.getDiscordAuthorizationHeader();
         try {
