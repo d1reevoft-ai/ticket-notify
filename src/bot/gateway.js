@@ -2885,4 +2885,4 @@ async function draftTicketReply(bot, channelId, messages) {
     return answerText;
 }
 
-module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply, requestAiAnswer };
+module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply, requestAiAnswer, formatDashboardMessage };
