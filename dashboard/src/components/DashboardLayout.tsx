@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import MemberPanel from './MemberPanel';
+import ErrorBoundary from './ErrorBoundary';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function DashboardLayout() {
@@ -55,7 +56,9 @@ export default function DashboardLayout() {
                                 transition={{ duration: 0.2 }}
                                 className="h-full"
                             >
-                                <Outlet />
+                                <ErrorBoundary key={location.pathname}>
+                                    <Outlet />
+                                </ErrorBoundary>
                             </motion.div>
                         </AnimatePresence>
                     </main>
