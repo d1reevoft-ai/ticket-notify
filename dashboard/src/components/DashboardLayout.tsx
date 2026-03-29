@@ -5,10 +5,14 @@ import Topbar from './Topbar';
 import MemberPanel from './MemberPanel';
 import ErrorBoundary from './ErrorBoundary';
 import { motion } from 'framer-motion';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export default function DashboardLayout() {
     const location = useLocation();
     const isServerPage = location.pathname.startsWith('/server');
+
+    // Global real-time socket updates for tickets/messages
+    useRealtimeSync();
 
     const [membersVisible, setMembersVisible] = useState(() => {
         return localStorage.getItem('dashboard_members_panel') !== 'hidden';

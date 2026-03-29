@@ -4,6 +4,7 @@ import { fetchSettings, updateSettings } from '../api/stats';
 import { Settings as SettingsIcon, Save, Loader2, Check, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../hooks/useTheme';
+import { useAuth } from '../hooks/useAuth';
 
 type SettingsData = Record<string, any>;
 
@@ -43,6 +44,78 @@ function TextField({ value, onChange, label, desc }: { value: string; onChange: 
             <input type="text" value={value} onChange={e => onChange(e.target.value)}
                 className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary mt-1" />
         </div>
+    );
+}
+
+function PasswordChangeForm() {
+    const { changePassword } = useAuth();
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setMessage('');
+        setError('');
+        if (newPassword !== confirmPassword) {
+            return setError('Новые пароли не совпадают');
+        }
+        if (newPassword.length < 6) {
+            return setError('Пароль должен содержать минимум 6 символов');
+        }
+        
+        setLoading(true);
+        const result = await changePassword(currentPassword, newPassword);
+        setLoading(false);
+
+        if (result.success) {
+            setMessage('Пароль успешно изменен');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+        } else {
+            setError(result.error || 'Ошибка при изменении пароля');
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            {message && <p className="text-green-500 text-sm font-medium">{message}</p>}
+            {error && <p className="text-destructive text-sm font-medium">{error}</p>}
+            <div className="space-y-3">
+                <input
+                    type="password"
+                    placeholder="Текущий пароль"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-secondary/50 border border-border text-foreground px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                />
+                <input
+                    type="password"
+                    placeholder="Новый пароль"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-secondary/50 border border-border text-foreground px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                />
+                <input
+                    type="password"
+                    placeholder="Подтвердите новый пароль"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-secondary/50 border border-border text-foreground px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                />
+            </div>
+            <button
+                type="submit"
+                disabled={loading || !currentPassword || !newPassword || !confirmPassword}
+                className="w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-6 rounded-lg transition-all disabled:opacity-50"
+            >
+                {loading ? 'Сохранение...' : 'Сменить пароль'}
+            </button>
+        </form>
     );
 }
 
@@ -184,6 +257,18 @@ export default function Settings() {
                         className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary mt-1 resize-y"
                         placeholder={"Говори прямо и коротко\nНе извиняйся\nНе используй смайлики\nЕсли не знаешь — говори \"не знаю\""}
                     />
+                </div>
+            </motion.div>
+            {/* Security Settings Group */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="bg-card border border-border rounded-xl p-6">
+                <div className="flex flex-col gap-4">
+                    <div>
+                        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-1">Безопасность</h2>
+                        <p className="text-sm text-foreground mb-4">Смена пароля администратора (для текущего аккаунта).</p>
+                    </div>
+                    <div className="w-full md:w-1/2">
+                        <PasswordChangeForm />
+                    </div>
                 </div>
             </motion.div>
         </div>
