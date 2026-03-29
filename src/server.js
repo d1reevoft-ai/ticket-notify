@@ -236,6 +236,30 @@ async function main() {
         } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
+    app.put('/api/tickets/:id/messages/:msgId/reactions/:emoji', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { id: channelId, msgId, emoji } = req.params;
+        try {
+            const result = await bot.addDiscordReaction(channelId, msgId, emoji);
+            if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            res.json({ ok: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.delete('/api/tickets/:id/messages/:msgId/reactions/:emoji', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { id: channelId, msgId, emoji } = req.params;
+        try {
+            const result = await bot.removeDiscordReaction(channelId, msgId, emoji);
+            if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            res.json({ ok: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Generate AI Summary for a ticket
     app.post('/api/tickets/:id/summary', authenticateToken, async (req, res) => {
         const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
