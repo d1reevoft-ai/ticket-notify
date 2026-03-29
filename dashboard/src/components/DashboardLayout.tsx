@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import MemberPanel from './MemberPanel';
 import ErrorBoundary from './ErrorBoundary';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 export default function DashboardLayout() {
     const location = useLocation();
@@ -47,20 +47,11 @@ export default function DashboardLayout() {
                 )}
                 <div className="flex-1 flex overflow-hidden relative">
                     <main className={`dashboard-main flex-1 z-0 overflow-y-auto custom-scrollbar overflow-x-hidden ${isServerPage ? 'p-3 md:p-4' : 'p-4 md:p-6'}`}>
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={location.pathname}
-                                initial={{ opacity: 0, y: 15 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -15 }}
-                                transition={{ duration: 0.2 }}
-                                className="h-full"
-                            >
-                                <ErrorBoundary key={location.pathname}>
-                                    <Outlet />
-                                </ErrorBoundary>
-                            </motion.div>
-                        </AnimatePresence>
+                        <div key={location.pathname} className="h-full animate-fade-in">
+                            <ErrorBoundary key={location.pathname}>
+                                <Outlet />
+                            </ErrorBoundary>
+                        </div>
                     </main>
                     {membersVisible && (
                         <div className="hidden lg:block relative z-10 shrink-0">
