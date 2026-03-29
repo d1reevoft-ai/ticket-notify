@@ -9,8 +9,7 @@ type AuthContextType = {
     loginWithGoogle: (credential: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
     sendOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
     verifyOtp: (email: string, code: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
-    forgotPassword: (username: string) => Promise<{ success: boolean; method?: string; message?: string; error?: string }>;
-    resetPassword: (username: string, code: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+    resetPassword: (username: string, newPassword: string) => Promise<{ success: boolean; message?: string; error?: string }>;
     changePassword: (current: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => void;
     loading: boolean;
@@ -119,19 +118,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
     };
 
-    const forgotPassword = async (username: string) => {
+    const resetPassword = async (username: string, newPassword: string) => {
         try {
-            const { data } = await client.post('/auth/forgot-password', { username });
-            return { success: true, method: data.method, message: data.message };
-        } catch (err: any) {
-            return { success: false, error: err.response?.data?.error || 'Failed to send reset code' };
-        }
-    };
-
-    const resetPassword = async (username: string, code: string, newPassword: string) => {
-        try {
-            await client.post('/auth/reset-password', { username, code, newPassword });
-            return { success: true };
+            const { data } = await client.post('/auth/reset-password', { username, newPassword });
+            return { success: true, message: data.message };
         } catch (err: any) {
             return { success: false, error: err.response?.data?.error || 'Failed to reset password' };
         }
@@ -147,7 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, login, register, loginWithGoogle, sendOtp, verifyOtp, forgotPassword, resetPassword, changePassword, logout, loading }}>
+        <AuthContext.Provider value={{ token, user, login, register, loginWithGoogle, sendOtp, verifyOtp, resetPassword, changePassword, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );
