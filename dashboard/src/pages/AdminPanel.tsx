@@ -182,10 +182,11 @@ export default function AdminPanel() {
                         </div>
                         <button onClick={fetchUsers} disabled={loading} className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary/60 rounded-xl border border-border transition-colors disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                     </div>
-                    <div className="bg-card border border-border rounded-xl overflow-hidden">
-                        <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-border text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                            <span>#</span><span>Пользователь</span><span>Роль</span><span className="text-right pr-2">Дата</span><span className="text-right">Действия</span>
-                        </div>
+                    <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto custom-scrollbar">
+                        <div className="min-w-[600px]">
+                            <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-border text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                                <span>#</span><span>Пользователь</span><span>Роль</span><span className="text-right pr-2">Дата</span><span className="text-right">Действия</span>
+                            </div>
                         {loading ? (
                             useSkeletons ? (
                                 <div className="divide-y divide-border/50">
@@ -228,6 +229,7 @@ export default function AdminPanel() {
                                         </motion.div>
                                     );
                                 })}</AnimatePresence>}
+                        </div>
                     </div>
                 </motion.div>
             )}

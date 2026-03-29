@@ -10,12 +10,12 @@ type SettingsData = Record<string, any>;
 
 function Toggle({ value, onChange, label, desc }: { value: boolean; onChange: (v: boolean) => void; label: string; desc?: string }) {
     return (
-        <div className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
-            <div>
+        <div className="flex items-center justify-between py-3 gap-4 border-b border-border/30 last:border-0">
+            <div className="flex-1">
                 <span className="text-sm font-medium text-foreground">{label}</span>
                 {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
             </div>
-            <button onClick={() => onChange(!value)} className="transition-colors">
+            <button onClick={() => onChange(!value)} className="transition-colors shrink-0">
                 {value ? <ToggleRight className="w-8 h-8 text-emerald-500" /> : <ToggleLeft className="w-8 h-8 text-muted-foreground" />}
             </button>
         </div>
@@ -24,14 +24,14 @@ function Toggle({ value, onChange, label, desc }: { value: boolean; onChange: (v
 
 function NumberField({ value, onChange, label, desc, min, max }: { value: number; onChange: (v: number) => void; label: string; desc?: string; min?: number; max?: number }) {
     return (
-        <div className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2 sm:gap-4 border-b border-border/30 last:border-0">
             <div className="flex-1">
                 <span className="text-sm font-medium text-foreground">{label}</span>
                 {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
             </div>
             <input type="number" value={value} min={min} max={max}
                 onChange={e => onChange(Number(e.target.value))}
-                className="w-24 bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-primary" />
+                className="w-full sm:w-24 bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm sm:text-right focus:outline-none focus:ring-1 focus:ring-primary shrink-0" />
         </div>
     );
 }

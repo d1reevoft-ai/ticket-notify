@@ -285,7 +285,7 @@ export default function Topbar({ membersVisible = true, onToggleMembers }: Topba
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                     transition={{ duration: 0.2, ease: "easeOut" }}
-                                    className="absolute right-0 mt-2 w-80 md:w-96 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-50 flex flex-col"
+                                    className="absolute right-[-1rem] sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-sm bg-card border border-border rounded-xl shadow-xl overflow-hidden z-50 flex flex-col"
                                 >
                                     <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
                                         <h3 className="font-semibold text-foreground">Уведомления</h3>

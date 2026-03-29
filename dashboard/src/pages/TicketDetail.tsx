@@ -350,9 +350,9 @@ export default function TicketDetail() {
                         </Link>
                         <div>
                             <h2 className="font-rajdhani font-bold text-base md:text-lg leading-tight flex items-center gap-2">
-                                #{ticket?.channelName || 'Ticket'}
+                                <span className="truncate max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">#{ticket?.channelName || 'Ticket'}</span>
                                 {ticket?.priority === 'high' && (
-                                    <span className="px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded text-[10px] font-semibold flex items-center gap-1">
+                                    <span className="px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded text-[10px] font-semibold flex items-center gap-1 shrink-0">
                                         <AlertCircle className="w-3 h-3" /> ПРИОРИТЕТ
                                     </span>
                                 )}
@@ -360,18 +360,18 @@ export default function TicketDetail() {
                             <p className="text-xs text-muted-foreground truncate max-w-[150px] md:max-w-xs">{ticket?.openerUsername}</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         <button
                             onClick={() => setShowInfoPanel(v => !v)}
                             className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors text-muted-foreground hover:text-foreground ${showInfoPanel ? 'bg-secondary/50 hover:bg-secondary' : 'hover:bg-secondary/50'}`}
                             title={showInfoPanel ? 'Скрыть информацию' : 'Показать информацию'}
                         >
-                            <PanelRight className="w-4 h-4" />
+                            <PanelRight className="w-4 h-4 md:w-5 md:h-5" />
                         </button>
                         <button
                             onClick={handleGenerateSummary}
                             disabled={isSummarizing || !messages || messages.length < 2}
-                            className="bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 border border-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold px-3 min-h-[44px] flex items-center justify-center rounded-lg gap-1.5 transition-colors"
+                            className="hidden sm:flex bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 border border-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold px-3 min-h-[44px] items-center justify-center rounded-lg gap-1.5 transition-colors"
                         >
                             {isSummarizing ? (
                                 <span className="animate-pulse">Анализ...</span>
@@ -389,10 +389,10 @@ export default function TicketDetail() {
                                 className="bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 disabled:opacity-50 text-xs font-semibold px-3 min-h-[44px] flex items-center justify-center rounded-lg gap-1.5 transition-colors"
                             >
                                 <Lock className="w-3.5 h-3.5" />
-                                <span>Закрыть</span>
+                                <span className="hidden sm:inline">Закрыть</span>
                             </button>
                         ) : (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 pr-1">
                                 <button
                                     onClick={async () => {
                                         if (!id) return;
@@ -419,29 +419,29 @@ export default function TicketDetail() {
                         )}
                     </div>
                     {closeError && (
-                        <div className="absolute top-full right-0 mt-1 bg-red-500/10 border border-red-500/20 text-red-500 text-xs px-3 py-2 rounded-lg z-50 whitespace-nowrap">
+                        <div className="absolute top-full right-0 mt-1 bg-red-500/10 border border-red-500/20 text-red-500 text-xs px-3 py-2 rounded-lg z-[60] whitespace-nowrap shadow-lg">
                             {closeError}
                         </div>
                     )}
                 </div>
 
-                <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar scroll-smooth relative">
+                <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 md:p-6 custom-scrollbar scroll-smooth relative">
                     <AnimatePresence>
                         {summary && (
                             <motion.div
                                 initial={{ opacity: 0, y: -20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
-                                className="mb-4 bg-purple-500/10 border border-purple-500/30 rounded-xl p-4 relative"
+                                className="mb-4 bg-purple-500/10 border border-purple-500/30 rounded-xl p-4 relative mx-1"
                             >
                                 <button
                                     onClick={() => setSummary(null)}
-                                    className="absolute top-2 right-2 p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-purple-500/70 hover:text-purple-500 hover:bg-purple-500/10 rounded-md transition-colors"
+                                    className="absolute top-2 right-2 p-1 min-h-[40px] min-w-[40px] flex items-center justify-center text-purple-500/70 hover:text-purple-500 hover:bg-purple-500/10 rounded-md transition-colors"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
                                 <h4 className="flex items-center gap-2 text-purple-500 font-bold mb-2 text-sm uppercase string-wide">
-                                    <Sparkles className="w-4 h-4" />
+                                    <Sparkles className="w-4 h-4 shrink-0" />
                                     Краткое содержание от AI
                                 </h4>
                                 <p className="text-sm text-foreground/90 leading-relaxed">
@@ -481,7 +481,7 @@ export default function TicketDetail() {
                     })}
                 </div>
 
-                <div className="p-3 md:p-4 bg-background border-t border-border shrink-0 relative">
+                <div className="p-2 md:p-4 bg-background border-t border-border shrink-0 relative">
                     {/* Reply/Edit indicator */}
                     <AnimatePresence>
                         {(replyTo || editingMsg) && (
@@ -491,29 +491,29 @@ export default function TicketDetail() {
                                 exit={{ opacity: 0, height: 0 }}
                                 className="overflow-hidden"
                             >
-                                <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-secondary/50 border border-border/50 text-sm">
+                                <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-secondary/50 border border-border/50 text-sm mx-1">
                                     {replyTo ? (
                                         <>
                                             <Reply className="w-4 h-4 text-primary shrink-0" />
-                                            <span className="text-muted-foreground">Ответ</span>
-                                            <span className="font-semibold text-foreground truncate">
+                                            <span className="text-muted-foreground hidden sm:inline">Ответ</span>
+                                            <span className="font-semibold text-foreground truncate max-w-[100px] md:max-w-[150px]">
                                                 {replyTo.author.global_name || replyTo.author.username}
                                             </span>
-                                            <span className="text-muted-foreground truncate flex-1 text-xs">
+                                            <span className="text-muted-foreground truncate flex-1 text-xs sm:text-sm">
                                                 {replyTo.content?.slice(0, 60) || '[embed]'}{replyTo.content && replyTo.content.length > 60 ? '…' : ''}
                                             </span>
                                         </>
                                     ) : editingMsg ? (
                                         <>
                                             <Pencil className="w-4 h-4 text-yellow-500 shrink-0" />
-                                            <span className="text-muted-foreground">Редактирование</span>
-                                            <span className="text-muted-foreground truncate flex-1 text-xs">
+                                            <span className="text-muted-foreground hidden sm:inline">Редактирование</span>
+                                            <span className="text-muted-foreground truncate flex-1 text-xs sm:text-sm">
                                                 {editingMsg.content?.slice(0, 60) || ''}{editingMsg.content && editingMsg.content.length > 60 ? '…' : ''}
                                             </span>
                                         </>
                                     ) : null}
-                                    <button onClick={cancelAction} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
-                                        <X className="w-3.5 h-3.5" />
+                                    <button onClick={cancelAction} className="p-1 min-h-[40px] min-w-[40px] flex items-center justify-center hover:bg-secondary rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                                        <X className="w-4 h-4" />
                                     </button>
                                 </div>
                             </motion.div>
@@ -523,7 +523,7 @@ export default function TicketDetail() {
                     <AnimatePresence>
                         {showBinds && content.startsWith('/') && filteredBinds.length > 0 && (
                             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                                className="absolute bottom-full left-3 right-3 md:left-4 md:right-4 mb-2 max-h-52 overflow-y-auto custom-scrollbar bg-card border border-border rounded-xl shadow-2xl z-50">
+                                className="absolute bottom-full left-2 right-2 md:left-4 md:right-4 mb-2 max-h-[40vh] md:max-h-52 overflow-y-auto custom-scrollbar bg-card border border-border rounded-xl shadow-2xl z-[60]">
                                 <div className="p-1.5">
                                     {filteredBinds.map((b, idx) => (
                                         <button key={b.name} type="button" onClick={() => selectBind(b)}
@@ -539,7 +539,7 @@ export default function TicketDetail() {
                     {attachments.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2 px-1">
                             {attachments.map((att, idx) => (
-                                <div key={idx} className="relative group rounded-lg overflow-hidden border border-border h-16 w-16 bg-secondary flex items-center justify-center">
+                                <div key={idx} className="relative group rounded-lg overflow-hidden border border-border h-16 w-16 md:h-20 md:w-20 bg-secondary flex items-center justify-center shrink-0">
                                     {att.mime.startsWith('image/') ? (
                                         <img src={att.data} alt={att.name} className="w-full h-full object-cover" />
                                     ) : (
@@ -548,7 +548,7 @@ export default function TicketDetail() {
                                     <button
                                         type="button"
                                         onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                                        className="absolute top-0.5 right-0.5 bg-black/50 hover:bg-black/70 text-white rounded-full p-0.5 transition-colors opacity-0 group-hover:opacity-100 backdrop-blur-sm"
+                                        className="absolute top-1 right-1 bg-black/50 hover:bg-black/80 text-white rounded-full p-1 transition-colors opacity-100 backdrop-blur-sm"
                                     >
                                         <X className="w-3 h-3" />
                                     </button>
@@ -557,14 +557,14 @@ export default function TicketDetail() {
                         </div>
                     )}
 
-                    <form onSubmit={handleSend} className="relative">
+                    <form onSubmit={handleSend} className="relative mx-1">
                         <textarea
                             ref={inputRef}
                             value={content}
                             onChange={e => handleContentChange(e.target.value)}
                             onPaste={handlePaste}
-                            placeholder={editingMsg ? 'Введите новый текст...' : replyTo ? 'Напишите ответ...' : 'Напишите ответ или / для бинда...'}
-                            className="w-full bg-secondary/50 border border-border rounded-xl pl-[6.5rem] pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
+                            placeholder={editingMsg ? 'Укажите новый текст...' : replyTo ? 'Напишите ответ...' : 'Напишите сообщение...'}
+                            className="w-full bg-secondary/50 border border-border rounded-xl pl-[5.5rem] md:pl-[6.5rem] pr-[3.5rem] md:pr-16 py-3 md:py-4 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm md:text-base leading-snug"
                             onKeyDown={e => {
                                 if (showBinds && content.startsWith('/') && filteredBinds.length > 0) {
                                     if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex(prev => Math.min(prev + 1, filteredBinds.length - 1)); return; }
@@ -575,19 +575,19 @@ export default function TicketDetail() {
                                 if (e.key === 'Escape') { e.preventDefault(); cancelAction(); return; }
                                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any); }
                             }} />
-                        <div className="absolute left-2 top-2 flex items-center gap-0.5 text-muted-foreground">
-                            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-foreground">
+                        <div className="absolute left-1.5 md:left-2 top-1 md:top-2 flex items-center gap-0.5 text-muted-foreground">
+                            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 min-h-[40px] md:min-h-[44px] min-w-[40px] md:min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-foreground">
                                 <Paperclip className="w-4 h-4 md:w-5 md:h-5" />
                             </button>
                             {!editingMsg && (
-                                <button type="button" onClick={handleGenerateSmartReply} disabled={isSmartReplying} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-purple-500 disabled:opacity-50">
+                                <button type="button" onClick={handleGenerateSmartReply} disabled={isSmartReplying} className="p-2 min-h-[40px] md:min-h-[44px] min-w-[40px] md:min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-purple-500 disabled:opacity-50">
                                     {isSmartReplying ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Sparkles className="w-4 h-4 md:w-5 md:h-5" />}
                                 </button>
                             )}
                         </div>
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" />
-                        <div className="absolute right-2 top-2">
-                            <button type="submit" disabled={(isPending || isEditing) || (!content.trim() && attachments.length === 0)} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+                        <div className="absolute right-1.5 md:right-2 top-1 md:top-2">
+                            <button type="submit" disabled={(isPending || isEditing) || (!content.trim() && attachments.length === 0)} className="p-2 min-h-[40px] md:min-h-[44px] min-w-[40px] md:min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
                                 {editingMsg ? <Pencil className="w-4 h-4 md:w-5 md:h-5" /> : <Send className="w-4 h-4 md:w-5 md:h-5" />}
                             </button>
                         </div>
@@ -595,12 +595,40 @@ export default function TicketDetail() {
                 </div>
             </div>
 
-            {/* Info Sidebar — collapsible */}
-            {showInfoPanel && (
-                <div className="hidden lg:flex w-80 shrink-0 flex-col gap-4 overflow-y-auto custom-scrollbar animate-fade-in">
-                    <TicketInfoSidebar ticket={ticket} />
-                </div>
-            )}
+            {/* Info Sidebar — collapsible on mobile */}
+            <AnimatePresence>
+                {showInfoPanel && (
+                    <>
+                        {/* Mobile Overlay */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowInfoPanel(false)}
+                            className="lg:hidden fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm"
+                        />
+                        {/* Panel */}
+                        <motion.div
+                            initial={{ x: '100%', opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: '100%', opacity: 0 }}
+                            transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+                            className="fixed lg:static inset-y-0 right-0 w-[85vw] sm:w-80 shrink-0 bg-card lg:bg-transparent z-[70] lg:z-auto p-4 lg:p-0 flex flex-col gap-4 overflow-y-auto custom-scrollbar shadow-2xl lg:shadow-none border-l lg:border-l-0 border-border"
+                        >
+                            <div className="flex items-center justify-between lg:hidden mb-2">
+                                <h3 className="font-rajdhani font-bold text-lg text-foreground uppercase tracking-wide">Информация</h3>
+                                <button
+                                    onClick={() => setShowInfoPanel(false)}
+                                    className="p-2 bg-secondary/50 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <TicketInfoSidebar ticket={ticket} />
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* Binds Modal (Ctrl+W) */}
             <AnimatePresence>
