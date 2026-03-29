@@ -73,7 +73,8 @@ export default function TicketDetail() {
     // Ctrl+W global listener for binds modal
     useEffect(() => {
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key === 'w') {
+            // e.code === 'KeyW' работает независимо от раскладки (Ctrl+W и Ctrl+Ц)
+            if (e.ctrlKey && e.code === 'KeyW') {
                 e.preventDefault();
                 e.stopPropagation();
                 setShowBindsModal(prev => {
@@ -692,10 +693,15 @@ export default function TicketDetail() {
                             </div>
 
                             {/* Footer */}
-                            <div className="px-5 py-3 border-t border-border flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
-                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↑↓</kbd> навигация</span>
-                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↵</kbd> выбрать</span>
-                                <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">Esc</kbd> закрыть</span>
+                            <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-4 text-[11px] text-muted-foreground">
+                                <div className="flex gap-4">
+                                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↑↓</kbd> навигация</span>
+                                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">↵</kbd> выбрать</span>
+                                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">Esc</kbd> закрыть</span>
+                                </div>
+                                <div>
+                                    <span>Вызов: <kbd className="px-1 py-0.5 bg-secondary rounded font-mono">Ctrl+W</kbd></span>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>
