@@ -53,8 +53,8 @@ export default function DashboardLayout() {
                 )}
                 <div className="flex-1 flex overflow-hidden relative">
                     <main className={`dashboard-main flex-1 z-0 overflow-y-auto custom-scrollbar overflow-x-hidden ${isServerPage ? 'p-3 md:p-4' : 'p-4 md:p-6'}`}>
-                        <div key={location.pathname} className="h-full animate-fade-in">
-                            <ErrorBoundary key={location.pathname}>
+                        <div key={isServerPage ? 'server' : location.pathname} className="h-full animate-fade-in">
+                            <ErrorBoundary key={isServerPage ? 'server' : location.pathname}>
                                 <Outlet />
                             </ErrorBoundary>
                         </div>
