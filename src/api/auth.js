@@ -190,6 +190,62 @@ function createAuthRoutes(db, tgToken, adminChatId) {
         }
     });
 
+    // -- Forgot Password Routes --
+    router.post('/forgot-password', async (req, res) => {
+        const { username } = req.body;
+        if (!username) return res.status(400).json({ error: 'Username required' });
+        try {
+            const user = db.prepare('SELECT id, email FROM users WHERE username = ?').get(username);
+            if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+            
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            const expiresAt = Date.now() + 10 * 60 * 1000;
+            
+            const targetId = user.email || username;
+            db.prepare('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)').run(targetId, code, expiresAt);
+            
+            if (user.email) {
+                await sendOtpEmail(user.email, code).catch(() => {});
+                res.json({ method: 'email', message: 'Код отправлен на вашу почту' });
+            } else if (tgToken && adminChatId) {
+                await sendTelegramMessage(tgToken, adminChatId, `🔐 <b>Запрос на сброс пароля</b>\n\nПользователь: <code>${username}</code>\nКод для сброса: <code>${code}</code>\n\n<i>Передайте код пользователю. Если это были не вы, проигнорируйте это сообщение.</i>`);
+                res.json({ method: 'telegram', message: 'Код отправлен администратору сервера (Telegram)' });
+            } else {
+                res.status(500).json({ error: 'Способ доставки кода недоступен (Email и Telegram не настроены)' });
+            }
+        } catch (err) {
+            console.error('[Auth API] Forgot Password Error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    router.post('/reset-password', async (req, res) => {
+        const { username, code, newPassword } = req.body;
+        if (!username || !code || !newPassword) return res.status(400).json({ error: 'Все поля обязательны' });
+        try {
+            const user = db.prepare('SELECT id, email FROM users WHERE username = ?').get(username);
+            if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+            
+            const targetId = user.email || username;
+            const record = db.prepare('SELECT id, expires_at FROM otp_codes WHERE email = ? AND code = ? ORDER BY id DESC LIMIT 1').get(targetId, code);
+            
+            if (!record) return res.status(401).json({ error: 'Неверный код' });
+            if (Date.now() > record.expires_at) return res.status(401).json({ error: 'Код истек' });
+            
+            db.prepare('DELETE FROM otp_codes WHERE id = ?').run(record.id);
+            
+            const saltRounds = 10;
+            const password_hash = await bcrypt.hash(newPassword, saltRounds);
+            
+            db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(password_hash, username);
+            
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('[Auth API] Reset Password Error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
     // -- Google OAuth Route --
     router.post('/google', async (req, res) => {
         const { credential } = req.body;
@@ -250,6 +306,27 @@ function createAuthRoutes(db, tgToken, adminChatId) {
                 }
             });
         } catch (error) {
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    router.put('/password', authenticateToken, async (req, res) => {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Укажите текущий и новый пароль' });
+        try {
+            const user = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(req.user.userId);
+            if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+            
+            const match = await bcrypt.compare(currentPassword, user.password_hash);
+            if (!match) return res.status(401).json({ error: 'Неверный текущий пароль' });
+            
+            const saltRounds = 10;
+            const password_hash = await bcrypt.hash(newPassword, saltRounds);
+            
+            db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, req.user.userId);
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('[Auth API] Change Password Error:', err);
             res.status(500).json({ error: 'Internal server error' });
         }
     });

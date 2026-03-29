@@ -12,7 +12,7 @@ export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
     
     // Auth Hooks
-    const { login, loginWithGoogle } = useAuth();
+    const { login, loginWithGoogle, forgotPassword, resetPassword } = useAuth();
     const navigate = useNavigate();
 
     // Password Form State
@@ -50,6 +50,45 @@ export default function Login() {
         setIsLoading(false);
     };
 
+    const [isForgot, setIsForgot] = useState(false);
+    const [forgotStep, setForgotStep] = useState(1);
+    const [forgotCode, setForgotCode] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [forgotMessage, setForgotMessage] = useState('');
+
+    const handleForgotSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setForgotMessage('');
+        setIsLoading(true);
+        const result = await forgotPassword(username);
+        if (result.success) {
+            setForgotMessage(result.message || 'Код отправлен');
+            setForgotStep(2);
+        } else {
+            setError(result.error || 'Ошибка при восстановлении');
+        }
+        setIsLoading(false);
+    };
+
+    const handleResetSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+        const result = await resetPassword(username, forgotCode, newPassword);
+        if (result.success) {
+            setIsForgot(false);
+            setForgotStep(1);
+            setForgotCode('');
+            setNewPassword('');
+            setPassword('');
+            setForgotMessage('Пароль успешно изменен! Выполните вход.');
+        } else {
+            setError(result.error || 'Ошибка при сбросе пароля');
+        }
+        setIsLoading(false);
+    };
+
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
             <div className="absolute inset-0 z-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/40 via-background to-background"></div>
@@ -64,7 +103,7 @@ export default function Login() {
                         <Lock className="w-8 h-8" />
                     </div>
                     <h1 className="text-3xl font-rajdhani font-bold text-foreground tracking-wide uppercase">Notifier</h1>
-                    <p className="text-muted-foreground mt-2">Войти в панель управления</p>
+                    <p className="text-muted-foreground mt-2">{isForgot ? 'Восстановление пароля' : 'Войти в панель управления'}</p>
                 </div>
 
                 {isPending ? (
@@ -88,6 +127,75 @@ export default function Login() {
                             ← Назад
                         </button>
                     </motion.div>
+                ) : isForgot ? (
+                    <motion.div
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="space-y-4"
+                    >
+                        {forgotMessage && <p className="text-green-500 text-sm font-medium text-center">{forgotMessage}</p>}
+                        {error && <p className="text-destructive text-sm font-medium text-center">{error}</p>}
+
+                        {forgotStep === 1 ? (
+                            <form onSubmit={handleForgotSubmit} className="space-y-4">
+                                <div className="relative">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        placeholder="Ваш логин"
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value)}
+                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={isLoading || !username}
+                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                                >
+                                    {isLoading ? 'Отправка...' : 'Далее'}
+                                </button>
+                            </form>
+                        ) : (
+                            <form onSubmit={handleResetSubmit} className="space-y-4">
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        placeholder="Код подтверждения"
+                                        value={forgotCode}
+                                        onChange={(e) => setForgotCode(e.target.value)}
+                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="password"
+                                        placeholder="Новый пароль"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={isLoading || !forgotCode || !newPassword}
+                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                                >
+                                    {isLoading ? 'Сброс...' : 'Изменить пароль'}
+                                </button>
+                            </form>
+                        )}
+                        <div className="text-center mt-4">
+                            <button
+                                onClick={() => { setIsForgot(false); setForgotStep(1); setError(''); setForgotMessage(''); }}
+                                className="text-primary text-sm hover:underline"
+                            >
+                                ← Вернуться ко входу
+                            </button>
+                        </div>
+                    </motion.div>
                 ) : (
                     <motion.form 
                         initial={{ opacity: 0, x: -10 }}
@@ -95,6 +203,8 @@ export default function Login() {
                         onSubmit={handlePasswordSubmit} 
                         className="space-y-4"
                     >
+                        {forgotMessage && <p className="text-green-500 text-sm font-medium text-center">{forgotMessage}</p>}
+                        {error && <p className="text-destructive text-sm font-medium">{error}</p>}
                         <div className="relative">
                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <input
@@ -115,7 +225,16 @@ export default function Login() {
                                 className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                             />
                         </div>
-                        {error && <p className="text-destructive text-sm font-medium">{error}</p>}
+
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setIsForgot(true); setError(''); setForgotMessage(''); }}
+                                className="text-primary text-xs hover:underline"
+                            >
+                                Забыли пароль?
+                            </button>
+                        </div>
 
                         <button
                             type="submit"
@@ -128,7 +247,7 @@ export default function Login() {
                     </motion.form>
                 )}
 
-                {!isPending && (
+                {!isPending && !isForgot && (
                     <>
                         <div className="mt-6 mb-6 flex items-center justify-center space-x-4">
                             <div className="h-px bg-border flex-1"></div>
@@ -148,7 +267,7 @@ export default function Login() {
                     </>
                 )}
 
-                {!isPending && (
+                {!isPending && !isForgot && (
                     <div className="mt-6 text-center">
                         <p className="text-muted-foreground text-sm">
                             Нет аккаунта?{' '}
