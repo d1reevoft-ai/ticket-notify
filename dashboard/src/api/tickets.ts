@@ -92,6 +92,10 @@ export const editTicketMessage = async (id: string, msgId: string, content: stri
     await client.patch(`/tickets/${id}/messages/${msgId}`, { content });
 };
 
+export const deleteTicketMessage = async (id: string, msgId: string): Promise<void> => {
+    await client.delete(`/tickets/${id}/messages/${msgId}`);
+};
+
 export const addReaction = async (id: string, msgId: string, emoji: string): Promise<void> => {
     await client.put(`/tickets/${id}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`);
 };

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useUserProfile, useTicketSummary, useCloseTicket, useSmartReply } from '../hooks/useTickets';
+import { useTicketMessages, useSendTicketMessage, useTickets, useEditTicketMessage, useDeleteTicketMessage, useUserProfile, useTicketSummary, useCloseTicket, useSmartReply } from '../hooks/useTickets';
 import { addReaction, removeReaction } from '../api/tickets';
 import { fetchBinds, fetchSettings } from '../api/stats';
 import { useSocket } from '../hooks/useSocket';
@@ -21,6 +21,7 @@ export default function TicketDetail() {
     const { data: tickets } = useTickets();
     const { mutateAsync: sendMessage, isPending } = useSendTicketMessage();
     const { mutateAsync: editMessage, isPending: isEditing } = useEditTicketMessage();
+    const { mutateAsync: deleteMessage } = useDeleteTicketMessage();
     const { mutateAsync: getSummary, isPending: isSummarizing } = useTicketSummary();
     const { mutateAsync: doCloseTicket, isPending: isClosing } = useCloseTicket();
     const { mutateAsync: doSmartReply, isPending: isSmartReplying } = useSmartReply();
@@ -258,6 +259,15 @@ export default function TicketDetail() {
         inputRef.current?.focus();
     };
 
+    const handleDelete = async (msg: DiscordMessage) => {
+        if (!id) return;
+        try {
+            await deleteMessage({ ticketId: id, msgId: msg.id });
+        } catch (e) {
+            console.error('Failed to delete message', e);
+        }
+    };
+
     const cancelAction = () => {
         setReplyTo(null);
         setEditingMsg(null);
@@ -471,6 +481,8 @@ export default function TicketDetail() {
                                 onReply={handleReply}
                                 onEdit={handleEdit}
                                 canEdit={isMine || isBotProxy}
+                                onDelete={handleDelete}
+                                canDelete={isMine || isBotProxy}
                                 onToggleReaction={handleToggleReaction}
                             />
                         );

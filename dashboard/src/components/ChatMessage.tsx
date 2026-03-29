@@ -3,7 +3,7 @@ import { ru } from 'date-fns/locale';
 import type { DiscordMessage } from '../api/tickets';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Reply, Pencil, CornerDownRight, X, Maximize2, Smile } from 'lucide-react';
+import { Reply, Pencil, CornerDownRight, X, Maximize2, Smile, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 const IMAGE_URL_RE = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp)(?:\?[^\s]*)?)/gi;
@@ -60,11 +60,14 @@ type ChatMessageProps = {
     onEdit?: (msg: DiscordMessage) => void;
     canEdit?: boolean;
     onToggleReaction?: (msg: DiscordMessage, emoji: string, add: boolean) => void;
+    onDelete?: (msg: DiscordMessage) => void;
+    canDelete?: boolean;
 };
 
-export default function ChatMessage({ message, isStaff, mentionMap, onReply, onEdit, canEdit, onToggleReaction }: ChatMessageProps) {
+export default function ChatMessage({ message, isStaff, mentionMap, onReply, onEdit, canEdit, onToggleReaction, onDelete, canDelete }: ChatMessageProps) {
     const isBot = message.author.bot;
     const [previewImage, setPreviewImage] = useState<string | undefined>(undefined);
+    const [confirmDelete, setConfirmDelete] = useState(false);
 
     const contentIsImageOnly = message.content && IMAGE_URL_RE.test(message.content) && message.content.trim().match(IMAGE_URL_RE)?.join('').length === message.content.trim().length;
     IMAGE_URL_RE.lastIndex = 0;
@@ -133,6 +136,26 @@ export default function ChatMessage({ message, isStaff, mentionMap, onReply, onE
                                 >
                                     <Pencil className="w-3.5 h-3.5" />
                                 </button>
+                            )}
+                            {canDelete && onDelete && (
+                                confirmDelete ? (
+                                    <button
+                                        onClick={() => { onDelete(message); setConfirmDelete(false); }}
+                                        onBlur={() => setConfirmDelete(false)}
+                                        className="px-2 py-1 min-h-[44px] flex items-center justify-center rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors text-[11px] font-medium"
+                                        title="Подтвердить удаление"
+                                    >
+                                        Удалить?
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => setConfirmDelete(true)}
+                                        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors"
+                                        title="Удалить сообщение"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )
                             )}
                         </div>
                     </div>
