@@ -259,6 +259,12 @@ class Bot {
                 timestamp TEXT DEFAULT '', embeds TEXT, attachments TEXT, member_roles TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_tm_ch ON ticket_messages(channel_id);
+            CREATE TABLE IF NOT EXISTS faq_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER DEFAULT 0
+            );
         `);
         this.stmtInsertClosed = this.db.prepare(
             `INSERT INTO closed_tickets (channel_id, channel_name, opener_id, opener_username, created_at, closed_at, first_staff_reply_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
