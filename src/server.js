@@ -200,7 +200,28 @@ async function main() {
         try {
             const result = await bot.sendDiscordMessage(channelId, content, replyTo || undefined, undefined, attachments);
             if (!result.ok) throw new Error(`Discord API ${result.status} - ${result.body}`);
-            try { const j = JSON.parse(result.body); if (j.id) bot.sentByBot.add(j.id); } catch { }
+            try {
+                const j = JSON.parse(result.body);
+                if (j.id) {
+                    bot.sentByBot.add(j.id);
+                    // Emit immediately — don't wait for Gateway
+                    const { formatDashboardMessage } = require('./bot/gateway');
+                    if (typeof formatDashboardMessage === 'function') {
+                        bot.emitToDashboard('ticket:message', {
+                            channelId,
+                            message: formatDashboardMessage(bot, j),
+                        });
+                    }
+                }
+            } catch { }
+            // Update ticket metadata instantly
+            if (record) {
+                record.lastMessage = (content || '').slice(0, 200);
+                record.lastMessageAt = Date.now();
+                record.lastStaffMessageAt = Date.now();
+                bot.markDirty();
+                bot.emitToDashboard('ticket:updated', { channelId, lastMessage: record.lastMessage, lastMessageAt: record.lastMessageAt });
+            }
             bot.addLog('message', `Сообщение отправлено в тикет ${channelId}`);
             res.json({ ok: true });
         } catch (err) { res.status(500).json({ error: err.message }); }
@@ -231,6 +252,16 @@ async function main() {
         try {
             const result = await bot.editDiscordMessage(channelId, msgId, content);
             if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            // Emit update immediately
+            try {
+                const parsed = JSON.parse(result.body);
+                if (parsed && parsed.id) {
+                    const { formatDashboardMessage } = require('./bot/gateway');
+                    if (typeof formatDashboardMessage === 'function') {
+                        bot.emitToDashboard('ticket:message_update', { channelId, message: formatDashboardMessage(bot, parsed) });
+                    }
+                }
+            } catch { }
             bot.addLog('message', `Сообщение отредактировано в тикете ${channelId}`);
             res.json({ ok: true });
         } catch (err) { res.status(500).json({ error: err.message }); }
@@ -244,6 +275,8 @@ async function main() {
         try {
             const result = await bot.deleteDiscordMessage(channelId, msgId);
             if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            // Emit delete immediately
+            bot.emitToDashboard('ticket:message_delete', { channelId, messageId: msgId });
             bot.addLog('message', `Сообщение удалено в тикете ${channelId}`);
             res.json({ ok: true });
         } catch (err) { res.status(500).json({ error: err.message }); }
@@ -319,6 +352,8 @@ async function main() {
         try {
             const result = await bot.closeTicketViaButton(channelId);
             if (result.ok) {
+                // Emit close immediately so dashboard reacts instantly
+                bot.emitToDashboard('ticket:closed', { channelId });
                 res.json({ ok: true });
             } else {
                 res.status(400).json({ ok: false, error: result.error });

@@ -98,58 +98,50 @@ export default function TicketDetail() {
 
     useEffect(() => {
         if (!socket || !id) return;
+
+        // Scroll to bottom when new messages arrive for THIS ticket
         const handleNewMessage = (data: any) => {
-            if (!data.channelId || data.channelId === id) {
-                if (data.message) {
-                    queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
-                        if (!old || !old.messages) return old;
-                        if (old.messages.some((m: any) => m.id === data.message.id)) return old;
-                        return { ...old, messages: [...old.messages, data.message] };
-                    });
-                } else {
-                    queryClient.invalidateQueries({ queryKey: ['tickets', id, 'messages'] });
-                }
-            }
-            queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        };
-
-        const handleUpdateMessage = (data: any) => {
             if (data.channelId === id && data.message) {
+                // Replace optimistic messages with real ones from Gateway
                 queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
                     if (!old || !old.messages) return old;
-                    return { ...old, messages: old.messages.map((m: any) => m.id === data.message.id ? data.message : m) };
+                    // Remove optimistic messages if a real one arrived with same content
+                    const hasOptimistic = old.messages.some((m: any) => String(m.id).startsWith('optimistic-'));
+                    if (hasOptimistic) {
+                        const cleaned = old.messages.filter((m: any) => !String(m.id).startsWith('optimistic-'));
+                        if (!cleaned.some((m: any) => m.id === data.message.id)) {
+                            return { ...old, messages: [...cleaned, data.message] };
+                        }
+                        return { ...old, messages: cleaned };
+                    }
+                    return old;
                 });
+                // Auto-scroll
+                setTimeout(() => {
+                    if (scrollRef.current) {
+                        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+                        if (scrollHeight - scrollTop - clientHeight < 200) {
+                            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                        }
+                    }
+                }, 50);
             }
         };
 
-        const handleDeleteMessage = (data: any) => {
-            if (data.channelId === id && data.messageId) {
-                queryClient.setQueryData(['tickets', id, 'messages'], (old: any) => {
-                    if (!old || !old.messages) return old;
-                    return { ...old, messages: old.messages.filter((m: any) => m.id !== data.messageId) };
-                });
+        // Navigate away if THIS ticket gets closed
+        const handleTicketClosed = (data: any) => {
+            if (data.channelId === id) {
+                navigate('/tickets', { replace: true });
             }
-        };
-
-        const handleTicketUpdated = () => {
-            queryClient.invalidateQueries({ queryKey: ['tickets'] });
         };
 
         socket.on('ticket:message', handleNewMessage);
-        socket.on('ticket:message_update', handleUpdateMessage);
-        socket.on('ticket:message_delete', handleDeleteMessage);
-        socket.on('ticket:updated', handleTicketUpdated);
-        socket.on('ticket:new', handleTicketUpdated);
-        socket.on('ticket:closed', handleTicketUpdated);
+        socket.on('ticket:closed', handleTicketClosed);
         return () => {
             socket.off('ticket:message', handleNewMessage);
-            socket.off('ticket:message_update', handleUpdateMessage);
-            socket.off('ticket:message_delete', handleDeleteMessage);
-            socket.off('ticket:updated', handleTicketUpdated);
-            socket.off('ticket:new', handleTicketUpdated);
-            socket.off('ticket:closed', handleTicketUpdated);
+            socket.off('ticket:closed', handleTicketClosed);
         };
-    }, [socket, id, queryClient]);
+    }, [socket, id, queryClient, navigate]);
 
     const selectBind = async (bind: { name: string; message: string }) => {
         setContent(''); setShowBinds(false); setSlashQuery(''); setSlashIndex(0);

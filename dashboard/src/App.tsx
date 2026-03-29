@@ -1,8 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-import { useSocket } from './hooks/useSocket';
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 import DashboardLayout from './components/DashboardLayout';
 import Login from './pages/Login';
@@ -23,32 +21,36 @@ import Prompt from './pages/Prompt';
 import Server from './pages/Server';
 import FAQ from './pages/FAQ';
 
+function AuthenticatedApp() {
+    // Single global real-time sync — replaces all manual socket subscriptions
+    useRealtimeSync();
+
+    return (
+        <Route element={<DashboardLayout />}>
+            <Route path="/" element={<Navigate to="/tickets" replace />} />
+            <Route path="/tickets" element={<Tickets />} />
+            <Route path="/tickets/:id" element={<TicketDetail />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/binds" element={<Binds />} />
+            <Route path="/shifts" element={<Shifts />} />
+            <Route path="/logs" element={<Logs />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/autoreplies" element={<AutoReplies />} />
+            <Route path="/closed-tickets" element={<ClosedTickets />} />
+            <Route path="/ai-learning" element={<ConversationLog />} />
+            <Route path="/prompt" element={<Prompt />} />
+            <Route path="/server" element={<Server />} />
+            <Route path="/server/:channelId" element={<Server />} />
+            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/faq" element={<FAQ />} />
+            <Route path="*" element={<Navigate to="/tickets" replace />} />
+        </Route>
+    );
+}
+
 export default function App() {
     const { token, loading } = useAuth();
-    const socket = useSocket();
-    const queryClient = useQueryClient();
-
-    useEffect(() => {
-        if (!socket || !token) return;
-        const invalidateTickets = () => queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        const invalidateClosed = () => queryClient.invalidateQueries({ queryKey: ['closedTickets'] });
-        
-        socket.on('ticket:new', invalidateTickets);
-        socket.on('ticket:closed', () => { invalidateTickets(); invalidateClosed(); });
-        socket.on('ticket:updated', invalidateTickets);
-        
-        // Also listen to member updates globally
-        socket.on('members:updated', () => {
-            queryClient.invalidateQueries({ queryKey: ['members'] });
-        });
-
-        return () => {
-            socket.off('ticket:new', invalidateTickets);
-            socket.off('ticket:closed'); 
-            socket.off('ticket:updated', invalidateTickets);
-            socket.off('members:updated');
-        };
-    }, [socket, token, queryClient]);
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -63,26 +65,7 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
-                <Route element={<DashboardLayout />}>
-                    <Route path="/" element={<Navigate to="/tickets" replace />} />
-                    <Route path="/tickets" element={<Tickets />} />
-                    <Route path="/tickets/:id" element={<TicketDetail />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/binds" element={<Binds />} />
-                    <Route path="/shifts" element={<Shifts />} />
-                    <Route path="/logs" element={<Logs />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/autoreplies" element={<AutoReplies />} />
-                    <Route path="/closed-tickets" element={<ClosedTickets />} />
-                    <Route path="/ai-learning" element={<ConversationLog />} />
-                    <Route path="/prompt" element={<Prompt />} />
-                    <Route path="/server" element={<Server />} />
-                    <Route path="/server/:channelId" element={<Server />} />
-                    <Route path="/admin" element={<AdminPanel />} />
-                    <Route path="/profile" element={<Profile />} />
-                    <Route path="/faq" element={<FAQ />} />
-                    <Route path="*" element={<Navigate to="/tickets" replace />} />
-                </Route>
+                <AuthenticatedApp />
             )}
         </Routes>
     );

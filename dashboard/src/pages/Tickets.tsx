@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useTickets } from '../hooks/useTickets';
-import { useSocket } from '../hooks/useSocket';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { fetchSettings } from '../api/stats';
 import TicketCard from '../components/TicketCard';
 import Skeleton from '../components/Skeleton';
@@ -15,26 +14,7 @@ export default function Tickets() {
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<'all' | 'high' | 'waiting'>('all');
 
-    const socket = useSocket();
-    const queryClient = useQueryClient();
-
-    useEffect(() => {
-        if (!socket) return;
-
-        const handleUpdate = () => {
-            queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        };
-
-        socket.on('ticket:new', handleUpdate);
-        socket.on('ticket:updated', handleUpdate);
-        socket.on('ticket:closed', handleUpdate);
-
-        return () => {
-            socket.off('ticket:new', handleUpdate);
-            socket.off('ticket:updated', handleUpdate);
-            socket.off('ticket:closed', handleUpdate);
-        };
-    }, [socket, queryClient]);
+    // Socket subscriptions removed — handled by global useRealtimeSync in App.tsx
 
     const filteredTickets = useMemo(() => {
         if (!tickets) return [];
