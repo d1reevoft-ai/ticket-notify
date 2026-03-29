@@ -12,7 +12,7 @@ export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
     
     // Auth Hooks
-    const { login, loginWithGoogle, forgotPassword, resetPassword } = useAuth();
+    const { login, loginWithGoogle, resetPassword } = useAuth();
     const navigate = useNavigate();
 
     // Password Form State
@@ -51,35 +51,16 @@ export default function Login() {
     };
 
     const [isForgot, setIsForgot] = useState(false);
-    const [forgotStep, setForgotStep] = useState(1);
-    const [forgotCode, setForgotCode] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [forgotMessage, setForgotMessage] = useState('');
-
-    const handleForgotSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setForgotMessage('');
-        setIsLoading(true);
-        const result = await forgotPassword(username);
-        if (result.success) {
-            setForgotMessage(result.message || 'Код отправлен');
-            setForgotStep(2);
-        } else {
-            setError(result.error || 'Ошибка при восстановлении');
-        }
-        setIsLoading(false);
-    };
 
     const handleResetSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setIsLoading(true);
-        const result = await resetPassword(username, forgotCode, newPassword);
+        const result = await resetPassword(username, newPassword);
         if (result.success) {
             setIsForgot(false);
-            setForgotStep(1);
-            setForgotCode('');
             setNewPassword('');
             setPassword('');
             setForgotMessage('Пароль успешно изменен! Выполните вход.');
@@ -136,60 +117,38 @@ export default function Login() {
                         {forgotMessage && <p className="text-green-500 text-sm font-medium text-center">{forgotMessage}</p>}
                         {error && <p className="text-destructive text-sm font-medium text-center">{error}</p>}
 
-                        {forgotStep === 1 ? (
-                            <form onSubmit={handleForgotSubmit} className="space-y-4">
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                    <input
-                                        type="text"
-                                        placeholder="Ваш логин"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={isLoading || !username}
-                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                                >
-                                    {isLoading ? 'Отправка...' : 'Далее'}
-                                </button>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleResetSubmit} className="space-y-4">
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                    <input
-                                        type="text"
-                                        placeholder="Код подтверждения"
-                                        value={forgotCode}
-                                        onChange={(e) => setForgotCode(e.target.value)}
-                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                    <input
-                                        type="password"
-                                        placeholder="Новый пароль"
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={isLoading || !forgotCode || !newPassword}
-                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                                >
-                                    {isLoading ? 'Сброс...' : 'Изменить пароль'}
-                                </button>
-                            </form>
-                        )}
+                        <form onSubmit={handleResetSubmit} className="space-y-4">
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    placeholder="Ваш логин"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                />
+                            </div>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <input
+                                    type="password"
+                                    placeholder="Новый пароль"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    className="w-full bg-secondary/50 border border-border text-foreground pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isLoading || !username || !newPassword}
+                                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                            >
+                                {isLoading ? 'Сброс...' : 'Изменить пароль'}
+                            </button>
+                        </form>
                         <div className="text-center mt-4">
                             <button
-                                onClick={() => { setIsForgot(false); setForgotStep(1); setError(''); setForgotMessage(''); }}
+                                onClick={() => { setIsForgot(false); setError(''); setForgotMessage(''); }}
                                 className="text-primary text-sm hover:underline"
                             >
                                 ← Вернуться ко входу
