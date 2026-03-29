@@ -94,7 +94,7 @@ ${combinedContext.substring(0, 15000)}
             
             // Format messages for requestAiAnswer
             const aiMessages = [{ role: 'user', content: prompt }];
-            const aiResult = await requestAiAnswer(bot, bot.config, aiMessages, { logPrefix: 'FAQ: ' });
+            const aiResult = await requestAiAnswer(bot, bot.config, aiMessages, { logPrefix: 'FAQ: ', maxTokens: 4000 });
             
             if (!aiResult.ok) {
                 return res.status(500).json({ error: aiResult.error || 'Failed to generate FAQ from AI' });
