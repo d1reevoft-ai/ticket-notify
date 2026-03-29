@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchTickets, fetchTicketMessages, sendTicketMessage, editTicketMessage, fetchUserProfile, generateTicketSummary, generateSmartReply, closeTicket } from '../api/tickets';
+import { fetchTickets, fetchTicketMessages, sendTicketMessage, editTicketMessage, deleteTicketMessage, fetchUserProfile, generateTicketSummary, generateSmartReply, closeTicket } from '../api/tickets';
 
 export const useTickets = () => {
     return useQuery({
@@ -43,6 +43,16 @@ export const useEditTicketMessage = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: ({ ticketId, msgId, content }: { ticketId: string; msgId: string; content: string }) => editTicketMessage(ticketId, msgId, content),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['tickets', variables.ticketId, 'messages'] });
+        },
+    });
+};
+
+export const useDeleteTicketMessage = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ ticketId, msgId }: { ticketId: string; msgId: string }) => deleteTicketMessage(ticketId, msgId),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['tickets', variables.ticketId, 'messages'] });
         },

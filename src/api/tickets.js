@@ -131,6 +131,28 @@ router.patch('/:id/messages/:msgId', async (req, res) => {
     }
 });
 
+// Delete a message
+router.delete('/:id/messages/:msgId', async (req, res) => {
+    const userId = req.user.userId;
+    const { id: channelId, msgId } = req.params;
+
+    const bot = botManager.bots.get(userId);
+    if (!bot) return res.status(400).json({ error: 'Bot is not running' });
+
+    const record = bot.activeTickets.get(channelId);
+    if (!record) return res.status(404).json({ error: 'Ticket not found' });
+
+    try {
+        const result = await bot.deleteDiscordMessage(channelId, msgId);
+        if (!result.ok) throw new Error(`Discord API ${result.status}`);
+
+        bot.addLog('message', `Сообщение удалено в тикете ${channelId}`);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Add a reaction to a message
 router.put('/:id/messages/:msgId/reactions/:emoji', async (req, res) => {
     const userId = req.user.userId;

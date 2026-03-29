@@ -236,6 +236,19 @@ async function main() {
         } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
+    app.delete('/api/tickets/:id/messages/:msgId', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { id: channelId, msgId } = req.params;
+        const record = bot.activeTickets.get(channelId);
+        if (!record) return res.status(404).json({ error: 'Ticket not found' });
+        try {
+            const result = await bot.deleteDiscordMessage(channelId, msgId);
+            if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            bot.addLog('message', `Сообщение удалено в тикете ${channelId}`);
+            res.json({ ok: true });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
     app.put('/api/tickets/:id/messages/:msgId/reactions/:emoji', authenticateToken, async (req, res) => {
         const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
         const { id: channelId, msgId, emoji } = req.params;
