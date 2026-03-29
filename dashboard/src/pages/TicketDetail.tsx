@@ -70,11 +70,11 @@ export default function TicketDetail() {
         localStorage.setItem('ticket_info_panel', showInfoPanel ? 'visible' : 'hidden');
     }, [showInfoPanel]);
 
-    // Ctrl+W global listener for binds modal
+    // Alt+W global listener for binds modal
     useEffect(() => {
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
-            // e.code === 'KeyW' работает независимо от раскладки (Ctrl+W и Ctrl+Ц)
-            if (e.ctrlKey && e.code === 'KeyW') {
+            // e.code === 'KeyW' работает независимо от раскладки (Alt+W и Alt+Ц)
+            if (e.altKey && e.code === 'KeyW') {
                 e.preventDefault();
                 e.stopPropagation();
                 setShowBindsModal(prev => {
@@ -700,7 +700,7 @@ export default function TicketDetail() {
                                     <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">Esc</kbd> закрыть</span>
                                 </div>
                                 <div>
-                                    <span>Вызов: <kbd className="px-1 py-0.5 bg-secondary rounded font-mono">Ctrl+W</kbd></span>
+                                    <span>Вызов: <kbd className="px-1 py-0.5 bg-secondary rounded font-mono">Alt+W</kbd></span>
                                 </div>
                             </div>
                         </motion.div>
