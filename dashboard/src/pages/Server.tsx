@@ -231,96 +231,144 @@ export default function Server() {
     }
 
     const activeChannel = channels.find(ch => ch.id === channelId);
+    const [showChannels, setShowChannels] = useState(false);
+
+    const renderChannelList = () => (
+        <>
+            <div className="px-3 py-3 border-b border-border bg-card/50 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <Link to="/tickets" className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0">
+                        <ArrowLeft className="w-4 h-4" />
+                    </Link>
+                    <h3 className="font-rajdhani font-bold text-sm uppercase tracking-wider text-foreground">
+                        Каналы сервера
+                    </h3>
+                </div>
+                <button
+                    onClick={() => setShowChannels(false)}
+                    className="md:hidden p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                {isChannelsLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    </div>
+                ) : channels.length === 0 ? (
+                    <div className="text-sm text-muted-foreground text-center py-8 italic">
+                        Каналы не найдены
+                    </div>
+                ) : (
+                    <>
+                        {/* Uncategorized channels */}
+                        {grouped.get(null)?.map(ch => (
+                            <ChannelItem
+                                key={ch.id}
+                                channel={ch}
+                                isActive={ch.id === channelId}
+                                onClick={() => { navigate(`/server/${ch.id}`); setShowChannels(false); }}
+                            />
+                        ))}
+
+                        {/* Categorized channels */}
+                        {categories.map(cat => {
+                            const catChannels = grouped.get(cat.id) || [];
+                            if (catChannels.length === 0) return null;
+                            const isCollapsed = collapsed.has(cat.id);
+                            return (
+                                <div key={cat.id} className="mt-2">
+                                    <button
+                                        onClick={() => toggleCategory(cat.id)}
+                                        className="flex items-center gap-1 w-full px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                        {cat.name}
+                                    </button>
+                                    <AnimatePresence>
+                                        {!isCollapsed && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                transition={{ duration: 0.2 }}
+                                                className="overflow-hidden"
+                                            >
+                                                {catChannels.map(ch => (
+                                                    <ChannelItem
+                                                        key={ch.id}
+                                                        channel={ch}
+                                                        isActive={ch.id === channelId}
+                                                        onClick={() => { navigate(`/server/${ch.id}`); setShowChannels(false); }}
+                                                    />
+                                                ))}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            );
+                        })}
+                    </>
+                )}
+            </div>
+        </>
+    );
 
     return (
-        <div className="h-full w-full flex gap-4 max-w-full mx-auto">
-            {/* ── Channel List Sidebar ── */}
+        <div className="h-[calc(100vh-8rem)] w-full flex gap-4 max-w-full mx-auto relative overflow-hidden">
+            {/* ── Channel List Sidebar (Desktop) ── */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3 }}
-                className="w-64 shrink-0 bg-card border border-border rounded-xl hidden md:flex flex-col"
+                className="w-64 shrink-0 bg-card border border-border rounded-xl hidden md:flex flex-col h-full"
             >
-                <div className="px-3 py-3 border-b border-border bg-card/50 flex items-center gap-2">
-                    <Link to="/tickets" className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0">
-                        <ArrowLeft className="w-4 h-4" />
-                    </Link>
-                    <h3 className="font-rajdhani font-bold text-sm uppercase tracking-wider text-muted-foreground">
-                        Каналы сервера
-                    </h3>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                    {isChannelsLoading ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : channels.length === 0 ? (
-                        <div className="text-sm text-muted-foreground text-center py-8 italic">
-                            Каналы не найдены
-                        </div>
-                    ) : (
-                        <>
-                            {/* Uncategorized channels */}
-                            {grouped.get(null)?.map(ch => (
-                                <ChannelItem
-                                    key={ch.id}
-                                    channel={ch}
-                                    isActive={ch.id === channelId}
-                                    onClick={() => navigate(`/server/${ch.id}`)}
-                                />
-                            ))}
-
-                            {/* Categorized channels */}
-                            {categories.map(cat => {
-                                const catChannels = grouped.get(cat.id) || [];
-                                if (catChannels.length === 0) return null;
-                                const isCollapsed = collapsed.has(cat.id);
-                                return (
-                                    <div key={cat.id} className="mt-2">
-                                        <button
-                                            onClick={() => toggleCategory(cat.id)}
-                                            className="flex items-center gap-1 w-full px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-                                        >
-                                            {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                            {cat.name}
-                                        </button>
-                                        <AnimatePresence>
-                                            {!isCollapsed && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ duration: 0.2 }}
-                                                    className="overflow-hidden"
-                                                >
-                                                    {catChannels.map(ch => (
-                                                        <ChannelItem
-                                                            key={ch.id}
-                                                            channel={ch}
-                                                            isActive={ch.id === channelId}
-                                                            onClick={() => navigate(`/server/${ch.id}`)}
-                                                        />
-                                                    ))}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                );
-                            })}
-                        </>
-                    )}
-                </div>
+                {renderChannelList()}
             </motion.div>
+
+            {/* ── Channel List Drawer (Mobile) ── */}
+            <AnimatePresence>
+                {showChannels && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowChannels(false)}
+                            className="md:hidden fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ x: '-100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '-100%' }}
+                            transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+                            className="md:hidden fixed inset-y-0 left-0 w-[80vw] sm:w-64 max-w-sm bg-card z-[70] flex flex-col shadow-2xl border-r border-border"
+                        >
+                            {renderChannelList()}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* ── Chat Area ── */}
             <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
-                className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm"
+                className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm h-full"
             >
                 {!channelId ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+                        <div className="flex md:hidden absolute top-4 left-4">
+                             <button
+                                onClick={() => setShowChannels(true)}
+                                className="p-2 bg-secondary rounded-xl hover:bg-secondary/80 hover:text-foreground text-foreground flex items-center gap-2 shadow-sm"
+                            >
+                                <Hash className="w-5 h-5 text-primary" />
+                                <span className="font-semibold text-sm">Выбрать канал</span>
+                            </button>
+                        </div>
                         <div className="w-16 h-16 rounded-2xl bg-secondary/50 border border-border flex items-center justify-center">
                             <MessageSquare className="w-8 h-8 text-muted-foreground/50" />
                         </div>
@@ -332,14 +380,20 @@ export default function Server() {
                 ) : (
                     <>
                         {/* Channel header */}
-                        <div className="h-14 px-5 border-b border-border bg-card/50 backdrop-blur flex items-center gap-3 shrink-0">
-                            <Hash className="w-5 h-5 text-muted-foreground" />
-                            <div>
-                                <h2 className="font-rajdhani font-bold text-base leading-tight">
+                        <div className="h-14 px-3 md:px-5 border-b border-border bg-card/50 backdrop-blur flex items-center gap-2 md:gap-3 shrink-0">
+                            <button
+                                onClick={() => setShowChannels(true)}
+                                className="md:hidden p-2 min-h-[40px] min-w-[40px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                            </button>
+                            <Hash className="w-5 h-5 text-muted-foreground shrink-0 hidden md:block" />
+                            <div className="flex-1 min-w-0">
+                                <h2 className="font-rajdhani font-bold text-base leading-tight truncate">
                                     {activeChannel?.name || 'Канал'}
                                 </h2>
                                 {activeChannel?.topic && (
-                                    <p className="text-xs text-muted-foreground truncate max-w-md">{activeChannel.topic}</p>
+                                    <p className="text-[10px] md:text-xs text-muted-foreground truncate max-w-[200px] md:max-w-md">{activeChannel.topic}</p>
                                 )}
                             </div>
                         </div>
@@ -353,7 +407,7 @@ export default function Server() {
                                         initial={{ opacity: 0, y: 10, scale: 0.9 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                                        className="absolute bottom-6 right-6 z-20"
+                                        className="absolute bottom-4 right-4 md:bottom-6 md:right-6 z-20"
                                     >
                                         <button
                                             onClick={() => {
@@ -361,10 +415,10 @@ export default function Server() {
                                                     scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
                                                 }
                                             }}
-                                            className="w-12 h-12 flex items-center justify-center bg-card border shadow-xl border-border/50 text-foreground rounded-full hover:bg-secondary transition-colors"
+                                            className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-card border shadow-xl border-border/50 text-foreground rounded-full hover:bg-secondary transition-colors"
                                             title="Вниз"
                                         >
-                                            <ArrowDown className="w-5 h-5 text-muted-foreground transition-colors hover:text-foreground" />
+                                            <ArrowDown className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground transition-colors hover:text-foreground" />
                                         </button>
                                     </motion.div>
                                 )}
@@ -373,7 +427,7 @@ export default function Server() {
                             <div
                                 ref={scrollRef}
                                 onScroll={handleScroll}
-                                className={`absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 transition-opacity duration-300 ${initialLoadDone ? 'opacity-100' : 'opacity-0'}`}
+                                className={`absolute inset-0 overflow-y-auto custom-scrollbar p-3 md:p-6 transition-opacity duration-300 ${initialLoadDone ? 'opacity-100' : 'opacity-0'}`}
                             >
                             {/* Load older indicator */}
                             {loadingOlder && (
@@ -411,7 +465,7 @@ export default function Server() {
                         </div>
 
                         {/* Input area */}
-                        <div className="p-3 md:p-4 bg-background border-t border-border shrink-0 relative">
+                        <div className="p-2 md:p-4 bg-background border-t border-border shrink-0 relative">
                             {/* Reply indicator */}
                             <AnimatePresence>
                                 {replyTo && (
@@ -421,17 +475,17 @@ export default function Server() {
                                         exit={{ opacity: 0, height: 0 }}
                                         className="overflow-hidden"
                                     >
-                                        <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-secondary/50 border border-border/50 text-sm">
+                                        <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-secondary/50 border border-border/50 text-sm mx-1">
                                             <Reply className="w-4 h-4 text-primary shrink-0" />
-                                            <span className="text-muted-foreground">Ответ</span>
-                                            <span className="font-semibold text-foreground truncate">
+                                            <span className="text-muted-foreground hidden sm:inline">Ответ</span>
+                                            <span className="font-semibold text-foreground truncate max-w-[100px] md:max-w-xs">
                                                 {replyTo.author.global_name || replyTo.author.username}
                                             </span>
                                             <span className="text-muted-foreground truncate flex-1 text-xs">
                                                 {replyTo.content?.slice(0, 60) || '[embed]'}{replyTo.content && replyTo.content.length > 60 ? '…' : ''}
                                             </span>
-                                            <button onClick={() => setReplyTo(null)} className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
-                                                <X className="w-3.5 h-3.5" />
+                                            <button onClick={() => setReplyTo(null)} className="p-1 min-h-[40px] min-w-[40px] flex items-center justify-center hover:bg-secondary rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                                                <X className="w-4 h-4" />
                                             </button>
                                         </div>
                                     </motion.div>
@@ -442,7 +496,7 @@ export default function Server() {
                             {attachments.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mb-2 px-1">
                                     {attachments.map((att, idx) => (
-                                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-border h-16 w-16 bg-secondary flex items-center justify-center">
+                                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-border h-16 w-16 md:h-20 md:w-20 bg-secondary flex items-center justify-center shrink-0">
                                             {att.mime.startsWith('image/') ? (
                                                 <img src={att.data} alt={att.name} className="w-full h-full object-cover" />
                                             ) : (
@@ -451,7 +505,7 @@ export default function Server() {
                                             <button
                                                 type="button"
                                                 onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                                                className="absolute top-0.5 right-0.5 bg-black/50 hover:bg-black/70 text-white rounded-full p-0.5 transition-colors opacity-0 group-hover:opacity-100 backdrop-blur-sm"
+                                                className="absolute top-1 right-1 bg-black/50 hover:bg-black/80 text-white rounded-full p-1 transition-colors opacity-100 backdrop-blur-sm"
                                             >
                                                 <X className="w-3 h-3" />
                                             </button>
@@ -460,27 +514,27 @@ export default function Server() {
                                 </div>
                             )}
 
-                            <form onSubmit={handleSend} className="relative">
+                            <form onSubmit={handleSend} className="relative mx-1">
                                 <textarea
                                     ref={inputRef}
                                     value={content}
                                     onChange={e => setContent(e.target.value)}
                                     onPaste={handlePaste}
                                     placeholder={replyTo ? 'Напишите ответ...' : 'Напишите сообщение...'}
-                                    className="w-full bg-secondary/50 border border-border rounded-xl pl-14 pr-16 py-3 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm"
+                                    className="w-full bg-secondary/50 border border-border rounded-xl pl-12 md:pl-14 pr-[3.5rem] md:pr-16 py-3 md:py-4 custom-scrollbar min-h-[48px] md:min-h-[56px] max-h-32 resize-none focus:outline-none focus:border-primary transition-colors text-sm md:text-base leading-snug"
                                     onKeyDown={e => {
                                         if (e.key === 'Escape') { e.preventDefault(); setReplyTo(null); return; }
                                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any); }
                                     }}
                                 />
-                                <div className="absolute left-2 top-2 flex items-center gap-0.5 text-muted-foreground">
-                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-foreground">
+                                <div className="absolute left-1.5 md:left-2 top-1 md:top-2 flex items-center gap-0.5 text-muted-foreground">
+                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 min-h-[40px] md:min-h-[44px] min-w-[40px] md:min-w-[44px] flex items-center justify-center hover:bg-secondary rounded-lg transition-colors hover:text-foreground">
                                         <Paperclip className="w-4 h-4 md:w-5 md:h-5" />
                                     </button>
                                 </div>
                                 <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" />
-                                <div className="absolute right-2 top-2">
-                                    <button type="submit" disabled={isSending || (!content.trim() && attachments.length === 0)} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+                                <div className="absolute right-1.5 md:right-2 top-1 md:top-2">
+                                    <button type="submit" disabled={isSending || (!content.trim() && attachments.length === 0)} className="p-2 min-h-[40px] md:min-h-[44px] min-w-[40px] md:min-w-[44px] flex items-center justify-center shrink-0 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
                                         {isSending ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Send className="w-4 h-4 md:w-5 md:h-5" />}
                                     </button>
                                 </div>

@@ -34,30 +34,30 @@ export default function Tickets() {
 
     return (
         <div className="max-w-6xl mx-auto h-full flex flex-col">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-0 mb-6 md:mb-8">
                 <div>
-                    <h1 className="text-3xl font-rajdhani font-bold text-foreground">Активные тикеты</h1>
+                    <h1 className="text-2xl md:text-3xl font-rajdhani font-bold text-foreground">Активные тикеты</h1>
                     <p className="text-muted-foreground mt-1 text-sm">Всего тикетов: {tickets?.length || 0}</p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <div className="relative group">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                    <div className="relative group w-full sm:w-auto">
                         <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-primary transition-colors" />
                         <input
                             type="text"
                             placeholder="Поиск по нику или #..."
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            className="pl-9 pr-4 py-2 bg-secondary border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary w-64 transition-all"
+                            className="pl-9 pr-4 py-2 bg-secondary border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64 transition-all"
                         />
                     </div>
 
-                    <div className="flex bg-secondary border border-border rounded-lg p-1">
+                    <div className="flex bg-secondary border border-border rounded-lg p-1 overflow-x-auto custom-scrollbar shadow-inner w-full sm:w-auto">
                         {(['all', 'high', 'waiting'] as const).map((f) => (
                             <button
                                 key={f}
                                 onClick={() => setFilter(f)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${filter === f
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap flex-1 sm:flex-none text-center ${filter === f
                                     ? 'bg-background text-foreground shadow-sm'
                                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80'
                                     }`}

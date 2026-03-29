@@ -6,10 +6,12 @@ import MemberPanel from './MemberPanel';
 import ErrorBoundary from './ErrorBoundary';
 import { motion } from 'framer-motion';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export default function DashboardLayout() {
     const location = useLocation();
     const isServerPage = location.pathname.startsWith('/server');
+    const isMobile = useMediaQuery('(max-width: 768px)');
 
     // Global real-time socket updates for tickets/messages
     useRealtimeSync();
@@ -39,9 +41,9 @@ export default function DashboardLayout() {
                 />
             )}
             <motion.div 
-                animate={{ marginLeft: isServerPage ? 0 : isSidebarCollapsed ? 80 : 256 }}
+                animate={{ marginLeft: isServerPage || isMobile ? 0 : isSidebarCollapsed ? 80 : 256 }}
                 transition={{ type: "tween", duration: 0.3 }}
-                className={`flex-1 flex flex-col h-screen overflow-hidden ${isServerPage ? '' : 'md:ml-0'}`}
+                className="flex-1 flex flex-col h-screen overflow-hidden"
             >
                 {!isServerPage && (
                     <Topbar
