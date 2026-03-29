@@ -48,3 +48,7 @@ export const sendServerMessage = async (
 ): Promise<void> => {
     await client.post(`/server/channels/${channelId}/send`, { content, replyTo, attachments });
 };
+
+export const triggerServerTyping = async (channelId: string): Promise<void> => {
+    await client.post(`/server/channels/${channelId}/typing`);
+};

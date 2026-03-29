@@ -1759,6 +1759,20 @@ function handleDispatch(bot, event, d) {
             break;
         }
 
+        case 'TYPING_START': {
+            if (d.user_id === String(bot.selfUserId)) break; // Ignore own typing
+            if (d.guild_id && d.channel_id) {
+                emitDashboard(bot, 'server:typing', {
+                    channelId: d.channel_id,
+                    guildId: d.guild_id,
+                    userId: d.user_id,
+                    timestamp: d.timestamp,
+                    member: d.member
+                });
+            }
+            break;
+        }
+
         case 'MESSAGE_CREATE': {
             const author = d.author;
             if (!author) break;

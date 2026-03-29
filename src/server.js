@@ -227,6 +227,16 @@ async function main() {
         } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
+    app.post('/api/tickets/:id/typing', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const channelId = req.params.id;
+        try {
+            const result = await bot.triggerDiscordTyping(channelId);
+            if (!result.ok) throw new Error(`Discord API ${result.status}`);
+            res.json({ ok: true });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
     app.post('/api/tickets/:id/smart-reply', authenticateToken, async (req, res) => {
         const bot = getBot(req, res); if (!bot) return res.status(400).json({ error: 'Bot not running' });
         const channelId = req.params.id;
@@ -716,6 +726,19 @@ async function main() {
             if (!result.ok) throw new Error(`Discord API ${result.status} - ${result.body}`);
             try { const j = JSON.parse(result.body); if (j.id) bot.sentByBot.add(j.id); } catch {}
             bot.addLog('message', `[Server] Сообщение отправлено в канал ${channelId}`);
+            res.json({ ok: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.post('/api/server/channels/:channelId/typing', authenticateToken, async (req, res) => {
+        const bot = getBot(req, res);
+        if (!bot) return res.status(400).json({ error: 'Bot not running' });
+        const { channelId } = req.params;
+        try {
+            const result = await bot.triggerDiscordTyping(channelId);
+            if (!result.ok) throw new Error(`Discord API ${result.status}`);
             res.json({ ok: true });
         } catch (err) {
             res.status(500).json({ error: err.message });
