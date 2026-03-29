@@ -727,14 +727,14 @@ async function getGeminiCandidateModels(bot, apiKey, configuredModels, versions,
     return [...new Set([...uniqueDiscovered, ...cleanConfigured])];
 }
 
-async function requestOpenAiCompatibleAnswer(bot, provider, endpoint, apiKey, models, messages, logPrefix = '', keyIndex = 0) {
+async function requestOpenAiCompatibleAnswer(bot, provider, endpoint, apiKey, models, messages, logPrefix = '', keyIndex = 0, opts = {}) {
     let lastError = 'no response';
     for (const model of models) {
         const payload = {
             model,
             messages,
             temperature: 0.7,
-            max_tokens: 800,
+            max_tokens: opts.maxTokens || 800,
         };
 
         let res;
@@ -772,7 +772,7 @@ function buildGeminiPrompt(messages) {
         .join('\n\n');
 }
 
-async function requestGeminiAnswer(bot, apiKey, models, messages, logPrefix = '', keyIndex = 0) {
+async function requestGeminiAnswer(bot, apiKey, models, messages, logPrefix = '', keyIndex = 0, opts = {}) {
     let lastError = 'no response';
     const prompt = buildGeminiPrompt(messages);
     if (!prompt) return { ok: false, answerText: '', model: '', provider: 'gemini', error: 'empty prompt' };
@@ -791,7 +791,7 @@ async function requestGeminiAnswer(bot, apiKey, models, messages, logPrefix = ''
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.7,
-                    maxOutputTokens: 800,
+                    maxOutputTokens: opts.maxTokens || 800,
                 },
             };
 
@@ -1056,7 +1056,8 @@ async function requestAiAnswer(bot, cfg, messages, opts = {}) {
                 getProviderModels('OPENROUTER_MODELS', DEFAULT_OPENROUTER_MODELS),
                 messages,
                 logPrefix,
-                keyIndex
+                keyIndex,
+                opts
             );
         } else if (cred.provider === 'groq') {
             result = await requestOpenAiCompatibleAnswer(
@@ -1067,7 +1068,8 @@ async function requestAiAnswer(bot, cfg, messages, opts = {}) {
                 getProviderModels('GROQ_MODELS', DEFAULT_GROQ_MODELS),
                 messages,
                 logPrefix,
-                keyIndex
+                keyIndex,
+                opts
             );
         } else if (cred.provider === 'gemini') {
             result = await requestGeminiAnswer(
@@ -1076,7 +1078,8 @@ async function requestAiAnswer(bot, cfg, messages, opts = {}) {
                 getProviderModels('GEMINI_MODELS', DEFAULT_GEMINI_MODELS),
                 messages,
                 logPrefix,
-                keyIndex
+                keyIndex,
+                opts
             );
         } else {
             continue;
