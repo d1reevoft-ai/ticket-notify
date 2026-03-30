@@ -574,7 +574,7 @@ class FunAI {
             try {
                 res = await this.bot.httpPostWithHeaders(endpoint, payload, { Authorization: `Bearer ${apiKey}` });
             } catch (e) {
-                this.bot.log(`⚠️ FunAI ${provider} error [${model}]: ${e.message}`);
+                this.bot.log(`⚠️ FunAI ${provider} network error [${model}]: ${e.message}`);
                 await sleep(350);
                 continue;
             }
@@ -584,6 +584,7 @@ class FunAI {
                 const usage = data?.usage || {};
                 return { ok: true, answerText, model, provider, error: '', usage: { promptTokens: usage.prompt_tokens || 0, completionTokens: usage.completion_tokens || 0, totalTokens: usage.total_tokens || 0 } };
             }
+            this.bot.log(`⚠️ FunAI ${provider} API error [${model}] ${res.status}: ${res.body?.slice(0, 200)}`);
             if (res.status === 401 || res.status === 403) break;
             if (res.status >= 500 || res.status === 429) await sleep(350);
         }
@@ -606,7 +607,7 @@ class FunAI {
                 try {
                     res = await this.bot.httpPost(url, payload);
                 } catch (e) {
-                    this.bot.log(`⚠️ FunAI gemini error [${model}@${version}]: ${e.message}`);
+                    this.bot.log(`⚠️ FunAI gemini network error [${model}@${version}]: ${e.message}`);
                     await sleep(350);
                     continue;
                 }
@@ -616,6 +617,7 @@ class FunAI {
                     const um = data?.usageMetadata || {};
                     return { ok: true, answerText, model: `${model}@${version}`, provider: 'gemini', error: '', usage: { promptTokens: um.promptTokenCount || 0, completionTokens: um.candidatesTokenCount || 0, totalTokens: um.totalTokenCount || 0 } };
                 }
+                this.bot.log(`⚠️ FunAI gemini API error [${model}@${version}] ${res.status}: ${res.body?.slice(0, 200)}`);
                 if (res.status === 401 || res.status === 403) break;
                 if (res.status === 404) continue; // Try next version
                 if (res.status >= 500 || res.status === 429) await sleep(350);
