@@ -139,8 +139,15 @@ function createProfileRoutes(db, botManager) {
                 const snakeKey = camelToSnake(key);
                 let val = body[key];
 
-                if (typeof val === 'boolean') val = val ? 1 : 0;
-                else if (typeof val === 'object') val = JSON.stringify(val);
+                if (key === 'geminiApiKeys' && typeof val === 'string') {
+                    // Split the raw string by newline to an array
+                    const lines = val.split(/[\r\n]+/).map(k => k.trim()).filter(Boolean);
+                    val = JSON.stringify(lines);
+                } else if (typeof val === 'boolean') {
+                    val = val ? 1 : 0;
+                } else if (typeof val === 'object') {
+                    val = JSON.stringify(val);
+                }
 
                 updates.push(`${snakeKey} = ?`);
                 params.push(val);
