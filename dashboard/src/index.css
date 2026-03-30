@@ -792,7 +792,8 @@
 .funai-message {
   display: flex;
   gap: 10px;
-  max-width: 95%;
+  max-width: 90%;
+  min-width: 0;
 }
 
 .funai-message--user {
@@ -823,6 +824,9 @@
   font-size: 14px;
   line-height: 1.55;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .funai-message--user .funai-message__bubble {
@@ -837,7 +841,7 @@
   border-bottom-left-radius: 4px;
 }
 
-.funai-message__text { word-wrap: break-word; }
+.funai-message__text { word-wrap: break-word; overflow-wrap: anywhere; }
 .funai-message__text strong { font-weight: 600; }
 .funai-inline-code {
   background: hsl(var(--secondary));
