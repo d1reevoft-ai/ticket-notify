@@ -251,6 +251,7 @@ class FunAI {
 
     async _routeIntent(question, context) {
         const normalized = String(question || '').toLowerCase().trim();
+        const mode = context.mode || 'widget';
         if (!normalized) return { answer: 'Пожалуйста, задайте вопрос 😊', level: 'l0', source: 'empty' };
 
         // Check for "remember" commands
@@ -273,12 +274,17 @@ class FunAI {
             return { answer: `Не нашёл записей про "${query}" 🤷`, level: 'l0', source: 'command' };
         }
 
+        // ── Widget-only built-in commands (L0) ──
+        if (mode === 'widget') {
+            const widgetResult = this._handleWidgetCommand(normalized, context);
+            if (widgetResult) return widgetResult;
+        }
+
         // L0: Exact match from memory (instant, 0 tokens)
         const memoryHits = this.memory.search(normalized, 3);
         if (memoryHits.length > 0) {
             const bestHit = memoryHits[0];
             if (bestHit.type === 'qa' && bestHit.question && bestHit.confidence >= 0.8) {
-                // Check if question is a close match
                 const qNorm = String(bestHit.question).toLowerCase().trim();
                 if (qNorm === normalized || normalized.includes(qNorm) || qNorm.includes(normalized)) {
                     return { answer: bestHit.content, level: 'l0', source: `memory:${bestHit.id}` };
@@ -289,7 +295,7 @@ class FunAI {
             }
         }
 
-        // L1: Rules + FAQ + Binds (instant, 0 tokens)
+        // L1: Rules by ID (both modes)
         const l1Result = this._checkL1(question, context);
         if (l1Result) return l1Result;
 
@@ -297,10 +303,89 @@ class FunAI {
         return await this._generateL2(question, context, memoryHits);
     }
 
-    _checkL1(question, context) {
-        const normalized = String(question || '').toLowerCase().trim();
+    /** Handle built-in widget commands locally without AI */
+    _handleWidgetCommand(normalized, context) {
+        // ── Greetings ──
+        const greetings = ['привет', 'здравствуй', 'здравствуйте', 'хай', 'ку', 'добрый день', 'добрый вечер', 'приветствую', 'здарова', 'салам', 'hello', 'hi'];
+        if (greetings.some(g => normalized === g || normalized.startsWith(g + ' ') || normalized.startsWith(g + '!'))) {
+            const activeCount = this.bot?.activeTickets?.size || 0;
+            const stats = this.memory.getStats(1);
+            let greeting = '👋 **Привет!** Я FunAI — твой умный помощник.\n\n';
+            greeting += `📊 Сейчас:\n`;
+            greeting += `• Активных тикетов: **${activeCount}**\n`;
+            greeting += `• Запросов сегодня: **${stats.today.totalRequests}**\n`;
+            greeting += `• Записей в памяти: **${stats.totals.memoryEntries}**\n\n`;
+            greeting += 'Спроси меня о чём угодно — тикеты, правила, настройки 🧠';
+            return { answer: greeting, level: 'l0', source: 'builtin:greeting' };
+        }
 
-        // Check rules by ID
+        // ── Statistics ──
+        if (/(статистик|стат(ы|с)|покажи стат|покажи данн|сколько тикет|обзор|дашборд)/i.test(normalized)) {
+            const activeCount = this.bot?.activeTickets?.size || 0;
+            const stats = this.memory.getStats(7);
+            const today = stats.today;
+            const memStats = this.memory.getMemoryStats();
+            const providers = this.getProviderStatus();
+            const providerNames = Object.keys(providers);
+
+            let answer = '📊 **Статистика FunAI**\n\n';
+            answer += `🎫 Активных тикетов: **${activeCount}**\n`;
+            answer += `💬 Запросов сегодня: **${today.totalRequests}**\n`;
+            answer += `• L0 (память): ${today.l0Hits} | L1 (правила): ${today.l1Hits} | L2 (AI): ${today.l2Hits}\n`;
+            answer += `🎯 Точность: **${today.accuracy}%**\n`;
+            answer += `🧠 Записей в памяти: **${memStats.total}**\n`;
+            answer += `🔤 Токенов потрачено: **${today.tokensUsed.toLocaleString()}**\n`;
+            if (providerNames.length > 0) {
+                answer += `⚡ Провайдеры: ${providerNames.map(p => `${p} (${providers[p].keyCount} ключей)`).join(', ')}\n`;
+            }
+            return { answer, level: 'l0', source: 'builtin:stats' };
+        }
+
+        // ── Help ──
+        if (/(помощь|help|что (ты )?умеешь|команды|возможности|функции)/i.test(normalized)) {
+            let answer = '🧠 **Что я умею:**\n\n';
+            answer += '📊 **Статистика** — «покажи статистику», «сколько тикетов»\n';
+            answer += '📚 **Правила** — «правило 5.7», «что за правило 9.1»\n';
+            answer += '🧠 **Память** — «запомни ...», «забудь ...»\n';
+            answer += '💡 **Советы** — спроси о настройках, автоответах, FAQ\n';
+            answer += '✏️ **AI-ответы** — любые вопросы через AI провайдеры\n';
+            return { answer, level: 'l0', source: 'builtin:help' };
+        }
+
+        // ── Memory info ──
+        if (/(что (ты )?помнишь|память|что (в )?памяти|memory|знания|база знаний)/i.test(normalized)) {
+            const memStats = this.memory.getMemoryStats();
+            let answer = '🧠 **Моя память:**\n\n';
+            answer += `📦 Всего записей: **${memStats.total}**\n`;
+            for (const [type, count] of Object.entries(memStats.byType)) {
+                const icons = { qa: '❓', fact: '📌', correction: '✏️', rule: '📋' };
+                answer += `${icons[type] || '📄'} ${type}: **${count}**\n`;
+            }
+            return { answer, level: 'l0', source: 'builtin:memory' };
+        }
+
+        // ── Provider status ──
+        if (/(провайдер|provider|api|ключ|gemini|groq|openrouter)/i.test(normalized)) {
+            const providers = this.getProviderStatus();
+            const entries = Object.values(providers);
+            if (entries.length === 0) {
+                return { answer: '⚠️ Нет настроенных AI провайдеров. Добавьте API ключи в настройках.', level: 'l0', source: 'builtin:providers' };
+            }
+            let answer = '⚡ **AI Провайдеры:**\n\n';
+            for (const p of entries) {
+                const icon = p.name === 'gemini' ? '✨' : p.name === 'groq' ? '⚡' : '🌐';
+                answer += `${icon} **${p.name}** — ${p.status === 'active' ? '✅ активен' : '⚠️ ошибка'}, ключей: ${p.keyCount}\n`;
+            }
+            return { answer, level: 'l0', source: 'builtin:providers' };
+        }
+
+        return null;
+    }
+
+    _checkL1(question, context) {
+        const mode = context.mode || 'widget';
+
+        // Check rules by ID (works in both widget and ticket modes)
         const ruleId = extractRuleIdFromQuestion(question);
         if (ruleId && _ruleById.has(ruleId)) {
             return { answer: _ruleById.get(ruleId), level: 'l1', source: `rule:${ruleId}` };
@@ -309,39 +394,44 @@ class FunAI {
             return { answer: `Пункта ${ruleId} в базе не найдено.`, level: 'l1', source: 'rule:not_found' };
         }
 
-        // Check binds
-        const bindMatch = normalized.match(/^\/?([a-zа-яё0-9_-]+)$/i);
-        if (bindMatch) {
-            const bindName = bindMatch[1];
-            const bind = this.bot?.config?.binds?.[bindName] || defaultBinds?.[bindName];
-            if (bind?.message) {
-                return { answer: bind.message, level: 'l1', source: `bind:${bindName}` };
+        // ── Ticket mode only: auto-replies and binds for Discord channels ──
+        if (mode === 'ticket') {
+            const normalized = String(question || '').toLowerCase().trim();
+
+            // Check binds
+            const bindMatch = normalized.match(/^\/?([a-zа-яё0-9_-]+)$/i);
+            if (bindMatch) {
+                const bindName = bindMatch[1];
+                const bind = this.bot?.config?.binds?.[bindName] || defaultBinds?.[bindName];
+                if (bind?.message) {
+                    return { answer: bind.message, level: 'l1', source: `bind:${bindName}` };
+                }
             }
-        }
 
-        // Check auto-replies
-        const decision = evaluateAutoReplyDecision({
-            rules: this.bot?.config?.autoReplies || [],
-            content: question,
-            channelId: context.channelId || '',
-            guildId: this.bot?.config?.guildId || '',
-            source: 'funai',
-        });
-        if (decision.action === 'send' && decision.response) {
-            return { answer: decision.response, level: 'l1', source: `rule:${decision.ruleName || 'auto'}` };
-        }
+            // Check auto-replies (only in ticket context, NOT widget!)
+            const decision = evaluateAutoReplyDecision({
+                rules: this.bot?.config?.autoReplies || [],
+                content: question,
+                channelId: context.channelId || '',
+                guildId: this.bot?.config?.guildId || '',
+                source: 'funai',
+            });
+            if (decision.action === 'send' && decision.response) {
+                return { answer: decision.response, level: 'l1', source: `rule:${decision.ruleName || 'auto'}` };
+            }
 
-        // Built-in answers for common topics
-        const asksFarm = /(заработ|заробот|фарм|как заработать)/i.test(question);
-        if (asksFarm) {
-            const farmBind = defaultBinds?.['заработок'] || defaultBinds?.['фарм'];
-            if (farmBind?.message) return { answer: farmBind.message, level: 'l1', source: 'bind:farm' };
-        }
+            // Built-in ban/farm answers for tickets
+            const asksFarm = /(заработ|заробот|фарм|как заработать)/i.test(question);
+            if (asksFarm) {
+                const farmBind = defaultBinds?.['заработок'] || defaultBinds?.['фарм'];
+                if (farmBind?.message) return { answer: farmBind.message, level: 'l1', source: 'bind:farm' };
+            }
 
-        const asksBan = /(забан|бан|апелляц|разбан)/i.test(question);
-        if (asksBan) {
-            const banBind = defaultBinds?.['апелляция'];
-            if (banBind?.message) return { answer: banBind.message, level: 'l1', source: 'bind:ban' };
+            const asksBan = /(забан|бан|апелляц|разбан)/i.test(question);
+            if (asksBan) {
+                const banBind = defaultBinds?.['апелляция'];
+                if (banBind?.message) return { answer: banBind.message, level: 'l1', source: 'bind:ban' };
+            }
         }
 
         return null;
@@ -397,7 +487,9 @@ class FunAI {
         // Call AI provider
         const result = await this._requestAI(messages);
         if (!result.ok) {
-            return { answer: '⚠️ AI провайдер не ответил. Попробуйте позже.', level: 'l2', source: 'error', tokensUsed: 0 };
+            // Fallback: provide useful local data instead of just an error
+            const fallback = this._buildFallbackAnswer(question, context);
+            return { answer: fallback, level: 'l2', source: 'fallback', tokensUsed: 0 };
         }
 
         // Sanitize links
@@ -413,6 +505,27 @@ class FunAI {
             tokensUsed: result.usage?.totalTokens || 0,
             actions,
         };
+    }
+
+    /** Build a useful fallback answer when AI providers fail */
+    _buildFallbackAnswer(question, context) {
+        const activeCount = this.bot?.activeTickets?.size || 0;
+        const stats = this.memory.getStats(1);
+        const providers = this.getProviderStatus();
+        const providerNames = Object.keys(providers);
+
+        let answer = '🤔 AI провайдеры сейчас недоступны, но вот что я могу показать:\n\n';
+        answer += `📊 Активных тикетов: **${activeCount}**\n`;
+        answer += `💬 Запросов сегодня: **${stats.today.totalRequests}**\n`;
+        answer += `🧠 Записей в памяти: **${stats.totals.memoryEntries}**\n\n`;
+
+        if (providerNames.length === 0) {
+            answer += '⚠️ **Не настроены AI провайдеры.** Добавьте API ключи в Настройках → Gemini/Groq/OpenRouter ключи.';
+        } else {
+            answer += `⚡ Настроенные провайдеры: ${providerNames.join(', ')} — возможно, истёк лимит запросов. Попробуйте позже.`;
+        }
+
+        return answer;
     }
 
     // ═══ AI Provider Logic ═══════════════════════════════════
