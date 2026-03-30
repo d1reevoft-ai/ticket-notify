@@ -362,15 +362,18 @@ class FunAI {
         // ── Greetings ──
         const greetings = ['привет', 'здравствуй', 'здравствуйте', 'хай', 'ку', 'добрый день', 'добрый вечер', 'приветствую', 'здарова', 'салам', 'hello', 'hi'];
         if (greetings.some(g => normalized === g || normalized.startsWith(g + ' ') || normalized.startsWith(g + '!'))) {
-            const activeCount = this.bot?.activeTickets?.size || 0;
-            const stats = this.memory.getStats(1);
-            let greeting = '👋 **Привет!** Я FunAI — твой умный помощник.\n\n';
-            greeting += `📊 Сейчас:\n`;
-            greeting += `• Активных тикетов: **${activeCount}**\n`;
-            greeting += `• Запросов сегодня: **${stats.today.totalRequests}**\n`;
-            greeting += `• Записей в памяти: **${stats.totals.memoryEntries}**\n\n`;
-            greeting += 'Спроси меня о чём угодно — тикеты, правила, настройки 🧠';
-            return { answer: greeting, level: 'l0', source: 'builtin:greeting' };
+            // Отвечать заготовленным приветствием только если сообщение короткое
+            if (normalized.length <= 25 || normalized.split(/\s+/).length <= 4) {
+                const activeCount = this.bot?.activeTickets?.size || 0;
+                const stats = this.memory.getStats(1);
+                let greeting = '👋 **Привет!** Я FunAI — твой умный помощник.\n\n';
+                greeting += `📊 Сейчас:\n`;
+                greeting += `• Активных тикетов: **${activeCount}**\n`;
+                greeting += `• Запросов сегодня: **${stats.today.totalRequests}**\n`;
+                greeting += `• Записей в памяти: **${stats.totals.memoryEntries}**\n\n`;
+                greeting += 'Спроси меня о чём угодно — тикеты, правила, настройки 🧠';
+                return { answer: greeting, level: 'l0', source: 'builtin:greeting' };
+            }
         }
 
         // ── Statistics ──
