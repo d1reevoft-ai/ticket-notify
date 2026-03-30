@@ -194,6 +194,19 @@ function getGeminiAnswer(data) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+/** Strip slash-commands from FAQ macro content so AI never leaks them to players */
+function sanitizeFaqContent(content) {
+    // Remove lines that are just a slash command (e.g. "/report ник чит/тим:")
+    return content.replace(/^\/.+$/gm, (line) => {
+        // Keep the part after the colon if it exists (it's the explanation)
+        const colonIdx = line.indexOf(':');
+        if (colonIdx !== -1 && colonIdx < line.length - 1) {
+            return line.substring(colonIdx + 1).trim();
+        }
+        return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  FunAI Core Class
 // ═══════════════════════════════════════════════════════════════
@@ -521,7 +534,8 @@ class FunAI {
             if (articles.length > 0) {
                 faqContext = '\n\nБАЗА ЗНАНИЙ:\n' + articles.map(a => {
                     const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
-                    return `${title}\n${a.content}`;
+                    const content = a.title.startsWith('/') ? sanitizeFaqContent(a.content) : a.content;
+                    return `${title}\n${content}`;
                 }).join('\n\n').substring(0, 4000);
             }
         } catch (_) { }
@@ -773,13 +787,15 @@ class FunAI {
 
     _parseActions(text) {
         const actions = [];
-        const regex = /\[ACTION:([^\]]+)\]/g;
+        // Tolerate optional spaces: [ ACTION:... ] or [ACTION:...]
+        const regex = /\[\s*ACTION\s*:\s*([^\]]+)\]/gi;
         let match;
         while ((match = regex.exec(text)) !== null) {
-            const parts = match[1].split(':');
+            const inner = match[1].trim();
+            const parts = inner.split(':');
             actions.push({
-                type: parts.slice(0, 2).join(':'),
-                params: parts.slice(2).join(':') || null,
+                type: parts.slice(0, 2).join(':').trim(),
+                params: parts.slice(2).join(':').trim() || null,
                 raw: match[0],
             });
         }
@@ -797,7 +813,8 @@ class FunAI {
             if (articles.length > 0) {
                 faqContext = '\n\n[БАЗА ЗНАНИЙ]\n' + articles.map(a => {
                     const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
-                    return `${title}\n${a.content}`;
+                    const content = a.title.startsWith('/') ? sanitizeFaqContent(a.content) : a.content;
+                    return `${title}\n${content}`;
                 }).join('\n\n').substring(0, 6000);
             }
         } catch (_) { }
