@@ -19,6 +19,7 @@ import AdminPanel from './pages/AdminPanel';
 import Prompt from './pages/Prompt';
 import Server from './pages/Server';
 import FAQ from './pages/FAQ';
+import FunAiDashboard from './pages/FunAiDashboard';
 
 export default function App() {
     const { token, loading } = useAuth();
@@ -54,6 +55,7 @@ export default function App() {
                     <Route path="/admin" element={<AdminPanel />} />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/faq" element={<FAQ />} />
+                    <Route path="/funai" element={<FunAiDashboard />} />
                     <Route path="*" element={<Navigate to="/tickets" replace />} />
                 </Route>
             )}

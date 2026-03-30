@@ -558,3 +558,991 @@
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   FunAI Styles — Unified AI Brain UI
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── FunAI Variables ─────────────────────────────────────────── */
+:root {
+  --funai-primary: 263 70% 58%;
+  --funai-primary-light: 263 70% 68%;
+  --funai-glow: rgba(139, 92, 246, 0.3);
+  --funai-glow-strong: rgba(139, 92, 246, 0.5);
+  --funai-gradient: linear-gradient(135deg, hsl(263 70% 58%), hsl(280 80% 55%));
+  --funai-surface: hsl(var(--card));
+  --funai-border: hsl(var(--border));
+}
+
+/* ── Floating Button ─────────────────────────────────────────── */
+.funai-button {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--funai-gradient);
+  border: none;
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px -8px var(--funai-glow-strong), 0 4px 12px -4px rgba(0,0,0,0.3);
+  transition: box-shadow 0.3s ease;
+}
+
+.funai-button:hover {
+  box-shadow: 0 12px 40px -6px var(--funai-glow-strong), 0 6px 16px -4px rgba(0,0,0,0.4);
+}
+
+.funai-button__icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.funai-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: hsl(0 85% 55%);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border: 2px solid hsl(var(--background));
+}
+
+.funai-button__pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid hsl(var(--funai-primary) / 0.5);
+  animation: funaiPulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes funaiPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0; }
+}
+
+/* ── Backdrop ────────────────────────────────────────────────── */
+.funai-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+}
+
+/* ── Side Panel ──────────────────────────────────────────────── */
+.funai-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  max-width: 100vw;
+  height: 100vh;
+  background: linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--background) / 0.96));
+  backdrop-filter: blur(20px) saturate(1.2);
+  border-left: 1px solid hsl(var(--border) / 0.5);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 48px -12px rgba(0, 0, 0, 0.3), -2px 0 8px -2px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 480px) {
+  .funai-panel { width: 100vw; }
+}
+
+.funai-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid hsl(var(--border) / 0.4);
+  background: linear-gradient(180deg, hsl(var(--funai-primary) / 0.08), transparent);
+}
+
+.funai-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.funai-panel__logo {
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px var(--funai-glow));
+}
+
+.funai-panel__title h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  background: var(--funai-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.funai-panel__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.funai-panel__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(142 76% 46%);
+  box-shadow: 0 0 6px hsl(142 76% 46% / 0.5);
+}
+
+.funai-panel__header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.funai-panel__header-btn {
+  padding: 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.funai-panel__header-btn:hover {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+/* ── Messages Area ───────────────────────────────────────────── */
+.funai-panel__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.funai-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  flex: 1;
+}
+
+.funai-panel__empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.funai-panel__empty-text {
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.funai-panel__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.funai-suggestion-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: hsl(var(--secondary) / 0.6);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 10px;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.funai-suggestion-btn:hover {
+  background: hsl(var(--funai-primary) / 0.12);
+  border-color: hsl(var(--funai-primary) / 0.3);
+  transform: translateY(-1px);
+}
+
+/* ── Chat Messages ───────────────────────────────────────────── */
+.funai-message {
+  display: flex;
+  gap: 10px;
+  max-width: 95%;
+}
+
+.funai-message--user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.funai-message--ai {
+  align-self: flex-start;
+}
+
+.funai-message__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--funai-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px var(--funai-glow);
+}
+
+.funai-message__bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.funai-message--user .funai-message__bubble {
+  background: hsl(var(--funai-primary) / 0.18);
+  border: 1px solid hsl(var(--funai-primary) / 0.2);
+  border-bottom-right-radius: 4px;
+}
+
+.funai-message--ai .funai-message__bubble {
+  background: hsl(var(--secondary) / 0.7);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-bottom-left-radius: 4px;
+}
+
+.funai-message__text { word-wrap: break-word; }
+.funai-message__text strong { font-weight: 600; }
+.funai-inline-code {
+  background: hsl(var(--secondary));
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.funai-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.funai-action-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: hsl(var(--funai-primary) / 0.15);
+  border: 1px solid hsl(var(--funai-primary) / 0.25);
+  color: hsl(var(--funai-primary-light));
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.funai-action-btn:hover {
+  background: hsl(var(--funai-primary) / 0.25);
+  border-color: hsl(var(--funai-primary) / 0.4);
+  transform: translateY(-1px);
+}
+
+.funai-message__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+.funai-message__level { font-size: 12px; }
+.funai-message__duration { opacity: 0.6; }
+
+/* ── Thinking Animation ──────────────────────────────────────── */
+.funai-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+}
+
+.funai-thinking__dots {
+  display: flex;
+  gap: 5px;
+  padding: 12px 16px;
+  background: hsl(var(--secondary) / 0.7);
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  border: 1px solid hsl(var(--border) / 0.4);
+}
+
+.funai-thinking__dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--funai-primary));
+  animation: funaiDot 1.2s ease-in-out infinite;
+}
+
+.funai-thinking__dots span:nth-child(2) { animation-delay: 0.2s; }
+.funai-thinking__dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes funaiDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Input Area ──────────────────────────────────────────────── */
+.funai-panel__input-area {
+  padding: 14px 16px;
+  border-top: 1px solid hsl(var(--border) / 0.4);
+  background: hsl(var(--card) / 0.5);
+}
+
+.funai-panel__input-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 14px;
+  padding: 8px 10px;
+  transition: border-color 0.2s;
+}
+
+.funai-panel__input-wrap:focus-within {
+  border-color: hsl(var(--funai-primary) / 0.4);
+  box-shadow: 0 0 0 2px hsl(var(--funai-primary) / 0.1);
+}
+
+.funai-panel__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  min-height: 20px;
+  max-height: 100px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.funai-panel__input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.funai-panel__send-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--funai-gradient);
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px var(--funai-glow);
+}
+
+.funai-panel__send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px var(--funai-glow-strong);
+}
+
+.funai-panel__send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ═══ FunAI Dashboard Page ═══════════════════════════════════ */
+
+.funai-dashboard {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.funai-dashboard__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.funai-dashboard__logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--funai-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 16px var(--funai-glow);
+}
+
+.funai-dashboard__status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: hsl(142 76% 46% / 0.12);
+  border: 1px solid hsl(142 76% 46% / 0.2);
+  color: hsl(142 76% 46%);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.funai-dashboard__status-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(142 76% 46%);
+  box-shadow: 0 0 8px hsl(142 76% 46% / 0.5);
+  animation: funaiPulse 2s ease-in-out infinite;
+}
+
+.funai-dashboard__refresh-btn {
+  padding: 8px;
+  border-radius: 8px;
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.5);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.funai-dashboard__refresh-btn:hover {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.funai-dashboard__tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: hsl(var(--secondary) / 0.4);
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border) / 0.3);
+}
+
+.funai-dashboard__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  flex: 1;
+  justify-content: center;
+}
+
+.funai-dashboard__tab:hover { color: hsl(var(--foreground)); }
+
+.funai-dashboard__tab--active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* ── Stat Cards ──────────────────────────────────────────────── */
+.funai-dashboard__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.funai-stat-card {
+  padding: 18px;
+  border-radius: 14px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.funai-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+.funai-stat-card--purple::before { background: var(--funai-gradient); }
+.funai-stat-card--green::before { background: linear-gradient(90deg, hsl(142 76% 46%), hsl(160 76% 46%)); }
+.funai-stat-card--blue::before { background: linear-gradient(90deg, hsl(210 90% 55%), hsl(230 80% 60%)); }
+.funai-stat-card--amber::before { background: linear-gradient(90deg, hsl(38 92% 55%), hsl(28 92% 55%)); }
+
+.funai-stat-card__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.funai-stat-card--purple .funai-stat-card__icon { background: hsl(var(--funai-primary) / 0.15); color: hsl(var(--funai-primary-light)); }
+.funai-stat-card--green .funai-stat-card__icon { background: hsl(142 76% 46% / 0.15); color: hsl(142 76% 46%); }
+.funai-stat-card--blue .funai-stat-card__icon { background: hsl(210 90% 55% / 0.15); color: hsl(210 90% 55%); }
+.funai-stat-card--amber .funai-stat-card__icon { background: hsl(38 92% 55% / 0.15); color: hsl(38 92% 55%); }
+
+.funai-stat-card__value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.funai-stat-card__label {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Distribution Bar ────────────────────────────────────────── */
+.funai-dashboard__distribution {
+  padding: 18px;
+  background: hsl(var(--card));
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.4);
+  margin-bottom: 20px;
+}
+
+.funai-distribution-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: hsl(var(--secondary));
+  margin-bottom: 10px;
+}
+
+.funai-dist-segment { transition: width 0.5s ease; min-width: 4px; }
+.funai-dist--l0 { background: hsl(var(--funai-primary)); }
+.funai-dist--l1 { background: hsl(38 92% 55%); }
+.funai-dist--l2 { background: hsl(210 90% 55%); }
+.funai-dist--empty { background: hsl(var(--secondary)); }
+
+.funai-distribution-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.funai-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.funai-legend--l0 { background: hsl(var(--funai-primary)); }
+.funai-legend--l1 { background: hsl(38 92% 55%); }
+.funai-legend--l2 { background: hsl(210 90% 55%); }
+
+/* ── History Bars ────────────────────────────────────────────── */
+.funai-dashboard__history {
+  padding: 18px;
+  background: hsl(var(--card));
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.4);
+}
+
+.funai-history-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 100px;
+}
+
+.funai-history-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.funai-history-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--funai-gradient);
+  min-height: 4px;
+  transition: height 0.4s ease;
+  opacity: 0.8;
+}
+
+.funai-history-date {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Memory Management ───────────────────────────────────────── */
+.funai-memory__toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.funai-memory__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 10px;
+}
+
+.funai-memory__search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: hsl(var(--foreground));
+  outline: none;
+  font-size: 14px;
+}
+
+.funai-memory__filter {
+  padding: 8px 12px;
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 10px;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.funai-memory__add-btn,
+.funai-memory__learn-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--funai-primary) / 0.3);
+  background: hsl(var(--funai-primary) / 0.1);
+  color: hsl(var(--funai-primary-light));
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.funai-memory__add-btn:hover,
+.funai-memory__learn-btn:hover {
+  background: hsl(var(--funai-primary) / 0.2);
+  border-color: hsl(var(--funai-primary) / 0.4);
+}
+
+.funai-memory__stats-bar {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.funai-memory__type-badge {
+  padding: 2px 8px;
+  background: hsl(var(--secondary) / 0.7);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.funai-memory__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.funai-memory__item {
+  padding: 14px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 12px;
+  transition: border-color 0.2s;
+}
+
+.funai-memory__item:hover {
+  border-color: hsl(var(--funai-primary) / 0.3);
+}
+
+.funai-memory__item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.funai-memory__type-tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.funai-memory__type--qa { background: hsl(210 90% 55% / 0.15); color: hsl(210 90% 55%); }
+.funai-memory__type--fact { background: hsl(var(--funai-primary) / 0.15); color: hsl(var(--funai-primary-light)); }
+.funai-memory__type--correction { background: hsl(38 92% 55% / 0.15); color: hsl(38 92% 55%); }
+.funai-memory__type--rule { background: hsl(142 76% 46% / 0.15); color: hsl(142 76% 46%); }
+
+.funai-memory__category {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--secondary) / 0.5);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.funai-memory__source {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  margin-left: auto;
+}
+
+.funai-memory__usage {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.funai-memory__delete {
+  padding: 4px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground) / 0.5);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.funai-memory__delete:hover {
+  color: hsl(0 85% 55%);
+  background: hsl(0 85% 55% / 0.1);
+}
+
+.funai-memory__question {
+  font-size: 13px;
+  color: hsl(var(--funai-primary-light));
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.funai-memory__content {
+  font-size: 14px;
+  line-height: 1.5;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+.funai-memory__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.funai-memory__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Modal ───────────────────────────────────────────────────── */
+.funai-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.funai-modal {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  padding: 24px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.funai-modal__field {
+  margin-bottom: 14px;
+}
+
+.funai-modal__field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 4px;
+}
+
+.funai-modal__field input,
+.funai-modal__field select,
+.funai-modal__field textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 8px;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.funai-modal__field input:focus,
+.funai-modal__field select:focus,
+.funai-modal__field textarea:focus {
+  border-color: hsl(var(--funai-primary) / 0.4);
+}
+
+.funai-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.funai-modal__cancel {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border) / 0.5);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.funai-modal__save {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: var(--funai-gradient);
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px var(--funai-glow);
+}
+
+.funai-modal__save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px var(--funai-glow-strong);
+}
+
+/* ── Provider Cards ──────────────────────────────────────────── */
+.funai-providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.funai-provider-card {
+  padding: 18px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 14px;
+}
+
+.funai-provider-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.funai-provider-card__name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.funai-provider-card__status {
+  font-size: 13px;
+}
+
+.funai-provider-card__status--active { color: hsl(142 76% 46%); }
+.funai-provider-card__status--error { color: hsl(0 85% 55%); }
+
+.funai-provider-card__details {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.funai-providers-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}

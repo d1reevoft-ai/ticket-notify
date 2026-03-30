@@ -23,6 +23,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     { to: '/closed-tickets', icon: TicketX, label: 'Архив', accent: 'primary' },
     { to: '/autoreplies', icon: Bot, label: 'Авто-ответы', accent: 'primary' },
     { to: '/ai-learning', icon: Brain, label: 'Обучение ИИ', accent: 'primary' },
+    { to: '/funai', icon: Brain, label: 'FunAI', accent: 'primary' },
     { to: '/faq', icon: BookOpen, label: 'База Знаний', accent: 'primary' },
     { to: '/prompt', icon: FileText, label: 'Промпт', accent: 'primary' },
     { to: '/server', icon: Server, label: 'Сервер', accent: 'primary' },

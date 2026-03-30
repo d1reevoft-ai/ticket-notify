@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const Bot = require('./Bot');
 const defaultAutoReplies = require('./bot/defaultAutoReplies');
 const defaultBinds = require('./bot/defaultBinds');
+const FunAI = require('./bot/funai');
 
 class BotManager {
     constructor(db, dataDir) {
@@ -138,6 +139,13 @@ class BotManager {
 
         try {
             bot.start();
+            // Initialize FunAI brain for this bot
+            try {
+                bot.funai = new FunAI(bot, this.db);
+                console.log(`[Manager] 🧠 FunAI initialized for user ${userId}`);
+            } catch (e) {
+                console.error(`[Manager] ⚠️ FunAI init error for user ${userId}:`, e.message);
+            }
             return true;
         } catch (error) {
             console.error(`[Manager] Error starting bot for user ${userId}:`, error);

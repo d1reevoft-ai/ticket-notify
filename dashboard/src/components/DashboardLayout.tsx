@@ -7,6 +7,9 @@ import ErrorBoundary from './ErrorBoundary';
 import { motion } from 'framer-motion';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useFunAi } from '../hooks/useFunAi';
+import FunAiButton from './FunAiButton';
+import FunAiPanel from './FunAiPanel';
 
 export default function DashboardLayout() {
     const location = useLocation();
@@ -15,6 +18,9 @@ export default function DashboardLayout() {
 
     // Global real-time socket updates for tickets/messages
     useRealtimeSync();
+
+    // FunAI global brain
+    const funai = useFunAi();
 
     const [membersVisible, setMembersVisible] = useState(() => {
         return localStorage.getItem('dashboard_members_panel') !== 'hidden';
@@ -66,6 +72,22 @@ export default function DashboardLayout() {
                     )}
                 </div>
             </motion.div>
+
+            {/* FunAI Global Widget */}
+            <FunAiButton
+                insightCount={funai.insightCount}
+                onClick={funai.togglePanel}
+                isOpen={funai.isPanelOpen}
+            />
+            <FunAiPanel
+                isOpen={funai.isPanelOpen}
+                onClose={funai.closePanel}
+                messages={funai.messages}
+                isThinking={funai.isThinking}
+                suggestions={funai.suggestions}
+                onSend={funai.sendMessage}
+                onClear={funai.clearHistory}
+            />
         </div>
     );
 }
