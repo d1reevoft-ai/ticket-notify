@@ -496,9 +496,9 @@ async function tryCompleteTruncatedAnswer(bot, cfg, messages, answerText, logPre
 }
 
 const DEFAULT_OPENROUTER_MODELS = [
-    'stepfun/step-3.5-flash:free',
-    'qwen/qwen3-32b:free',
+    'google/gemini-2.0-flash-lite-preview-02-05:free',
     'meta-llama/llama-3.3-70b-instruct:free',
+    'deepseek/deepseek-r1-distill-llama-70b:free',
 ];
 const DEFAULT_GROQ_MODELS = [
     'llama-3.1-8b-instant',
