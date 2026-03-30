@@ -25,6 +25,8 @@ const { createAuthRoutes, authenticateToken, JWT_SECRET, sendTelegramMessage } =
 const { createProfileRoutes } = require('./api/profile');
 const { createAdminRoutes } = require('./api/admin');
 const { createFaqRoutes } = require('./api/faq');
+const { createFunAiRoutes } = require('./api/funai');
+const FunAI = require('./bot/funai');
 const { invalidateSystemPromptCache } = require('./bot/gateway');
 
 // Prefer Railway persistent volume (/data), then env var, then local ./data
@@ -85,6 +87,9 @@ async function main() {
 
     // -- FAQ Knowledge Base --
     app.use('/api/faq', createFaqRoutes(db, botManager));
+
+    // -- FunAI Routes --
+    app.use('/api/funai', createFunAiRoutes(db, botManager));
 
     // -- Helper: get bot for authenticated user --
     function getBot(req, res) {
