@@ -56,7 +56,7 @@ export default function FunAiPanel({
     };
 
     const handleAction = (action: { type: string; params: string | null }) => {
-        if (action.type.startsWith('navigate:')) {
+        if (action.type === 'navigate' || action.type.startsWith('navigate:')) {
             const page = action.params || '/';
             navigate(page);
         }

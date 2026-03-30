@@ -54,10 +54,10 @@ const WIDGET_SYSTEM_PROMPT = `Ты — FunAI, интеллектуальный A
 действие через специальный формат:
 
 [ACTION:ticket:list] — показать тикеты
-[ACTION:navigate:PAGE] — перейти на страницу
+[ACTION:navigate:/tickets/ID] — перейти в тикет по его ID
 [ACTION:memory:add:ТЕКСТ] — запомнить информацию
-[ACTION:ticket:close] — закрыть текущий тикет (только если пользователь просит закрыть тикет и ты находишься на его странице)
-[ACTION:ticket:reply:ТЕКСТ] — отправить сообщение в текущий тикет от лица бота (где ТЕКСТ - само сообщение)
+[ACTION:ticket:close] — закрыть текущий тикет (только если открыта страница тикета)
+[ACTION:ticket:reply:ТЕКСТ] — отправить сообщение в текущий тикет от лица бота
 
 ═══ ПРАВИЛА ═══
 1. Отвечай ТОЛЬКО на русском языке
@@ -66,8 +66,8 @@ const WIDGET_SYSTEM_PROMPT = `Ты — FunAI, интеллектуальный A
 4. Если заметил проблему — сразу расскажи
 5. Не придумывай данных — используй только реальную информацию из системы
 6. Ты работаешь в контексте дашборда — помогай администратору управлять системой
-7. НИКОГДА не показывай пользователю сырые числовые ID каналов/тикетов (вроде 1488095184569897091). Вместо этого используй человеческое название тикета (например "тикет-от-natashapivo") или просто "текущий тикет"
-8. Если в контексте есть имя тикета — используй его. Если нет — пиши "текущий тикет"`;
+7. НИКОГДА не пиши сырые числовые ID (вроде 1488095184) в самом тексте ответа! Для текста используй ИМЯ тикета.
+8. Разрешено использовать числовые ID ТОЛЬКО внутри технических тегов [ACTION:...].`;
 
 const TICKET_SYSTEM_PROMPT = `Ты — помощник поддержки Minecraft-сервера FunTime.
 
@@ -696,6 +696,20 @@ class FunAI {
         contextInfo += `- Активные тикеты: ${activeCount}\n`;
         contextInfo += `- Запросов сегодня: ${today.totalRequests}\n`;
         contextInfo += `- Записей в памяти: ${stats.totals.memoryEntries}\n`;
+
+        if (activeCount > 0) {
+            contextInfo += `\n[СПИСОК ОТКРЫТЫХ ТИКЕТОВ]\n`;
+            let tCount = 0;
+            const msToMin = (ms) => Math.floor(ms / 60000);
+            for (const [tId, tMeta] of this.bot.activeTickets) {
+                if (tCount >= 10) break;
+                const author = tMeta.openerUsername || tMeta.openerId || 'неизвестно';
+                const minsAgo = msToMin(Date.now() - tMeta.createdAt);
+                contextInfo += `- ${tMeta.channelName} (ID: ${tId}, создан ${minsAgo} мин назад, автор: ${author})\n`;
+                tCount++;
+            }
+            if (activeCount > 10) contextInfo += `...и еще ${activeCount - 10} тикетов.\n`;
+        }
 
         // 🧠 Live Ticket Injection
         if (context.currentPage && context.currentPage.startsWith('/tickets/')) {
