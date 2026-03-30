@@ -67,7 +67,8 @@ const WIDGET_SYSTEM_PROMPT = `Ты — FunAI, интеллектуальный A
 5. Не придумывай данных — используй только реальную информацию из системы
 6. Ты работаешь в контексте дашборда — помогай администратору управлять системой
 7. НИКОГДА не пиши сырые числовые ID (вроде 1488095184) в самом тексте ответа! Для текста используй ИМЯ тикета.
-8. Разрешено использовать числовые ID ТОЛЬКО внутри технических тегов [ACTION:...].`;
+8. Разрешено использовать числовые ID ТОЛЬКО внутри технических тегов [ACTION:...].
+9. Если в контексте (БАЗА ЗНАНИЙ) есть "Макрос", используй его текст для ответа, но НИКОГДА не отправляй пользователю саму команду (название макроса), так как это команда для админа, а не для игрока.`;
 
 const TICKET_SYSTEM_PROMPT = `Ты — помощник поддержки Minecraft-сервера FunTime.
 
@@ -518,7 +519,10 @@ class FunAI {
         try {
             const articles = this.db.prepare('SELECT title, content FROM faq_articles ORDER BY created_at DESC LIMIT 10').all();
             if (articles.length > 0) {
-                faqContext = '\n\nБАЗА ЗНАНИЙ:\n' + articles.map(a => `### ${a.title}\n${a.content}`).join('\n\n').substring(0, 4000);
+                faqContext = '\n\nБАЗА ЗНАНИЙ:\n' + articles.map(a => {
+                    const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
+                    return `${title}\n${a.content}`;
+                }).join('\n\n').substring(0, 4000);
             }
         } catch (_) { }
 
@@ -791,7 +795,10 @@ class FunAI {
         try {
             const articles = this.db.prepare('SELECT title, content FROM faq_articles ORDER BY created_at DESC LIMIT 10').all();
             if (articles.length > 0) {
-                faqContext = '\n\n[БАЗА ЗНАНИЙ]\n' + articles.map(a => `### ${a.title}\n${a.content}`).join('\n\n').substring(0, 6000);
+                faqContext = '\n\n[БАЗА ЗНАНИЙ]\n' + articles.map(a => {
+                    const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
+                    return `${title}\n${a.content}`;
+                }).join('\n\n').substring(0, 6000);
             }
         } catch (_) { }
 
