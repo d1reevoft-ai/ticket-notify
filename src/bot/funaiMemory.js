@@ -188,37 +188,56 @@ class FunAIMemory {
     /** Full-text search in memory */
     search(query, limit = 10) {
         if (!query) return [];
-        const tokens = String(query).toLowerCase().split(/\s+/).filter(t => t.length > 1);
+        
+        // Russian stop words
+        const stopWords = new Set(['я','ты','он','она','оно','мы','вы','они','что','кто','как','какие','какая','какой','где','когда','зачем','почему','для','на','в','с','к','от','до','из','у','о','об','и','а','но','да','нет','это','тот','эта','те','то']);
+        
+        const rawTokens = String(query).toLowerCase().replace(/[^\w\sа-яё]/gi, '').split(/\s+/);
+        // Deduplicate tokens and filter noise
+        const tokens = [...new Set(rawTokens)].filter(t => t.length > 2 && !stopWords.has(t));
+        
         if (tokens.length === 0) return [];
 
-        // Use LIKE-based search for compatibility  
+        // Advanced SQL Query for Match Count Scoring
         const conditions = tokens.map(() => '(LOWER(content) LIKE ? OR LOWER(question) LIKE ?)');
+        const matchCalculations = tokens.map((_, i) => `(CASE WHEN LOWER(content) LIKE ? OR LOWER(question) LIKE ? THEN 1 ELSE 0 END)`);
+        
         const params = [];
         for (const token of tokens) {
             params.push(`%${token}%`, `%${token}%`);
         }
 
+        // Params for the WHERE OR clause
+        const matchParams = [];
+        for (const token of tokens) {
+            matchParams.push(`%${token}%`, `%${token}%`); 
+        }
+
         const sql = `
             SELECT *, 
+                   (${matchCalculations.join(' + ')}) as match_count,
                    (CASE WHEN type = 'correction' THEN 3 
                          WHEN source = 'admin' THEN 2 
                          WHEN type = 'qa' THEN 1.5 
                          ELSE 1 END) * confidence AS score
             FROM funai_memory 
-            WHERE (expires_at IS NULL OR expires_at > ?) AND (${conditions.join(' AND ')})
-            ORDER BY score DESC, usage_count DESC
+            WHERE (expires_at IS NULL OR expires_at > ?) AND (${conditions.join(' OR ')})
+            ORDER BY match_count DESC, score DESC, usage_count DESC
             LIMIT ?
         `;
 
-        const results = this.db.prepare(sql).all(Date.now(), ...params, limit);
+        // We pass the params twice: first for the calculation CASE block, second for the WHERE OR block
+        const results = this.db.prepare(sql).all(...params, Date.now(), ...matchParams, limit);
 
-        // Increment usage count for found items
-        if (results.length > 0) {
-            const ids = results.map(r => r.id);
+        // Filter out very weak matches (optional, but good for reducing hallucinations)
+        const relevantResults = results; // results.filter(r => r.match_count >= Math.min(tokens.length, 2));
+
+        if (relevantResults.length > 0) {
+            const ids = relevantResults.map(r => r.id);
             this.db.prepare(`UPDATE funai_memory SET usage_count = usage_count + 1 WHERE id IN (${ids.join(',')})`).run();
         }
 
-        return results;
+        return relevantResults;
     }
 
     /** Remember a fact from a conversation */
