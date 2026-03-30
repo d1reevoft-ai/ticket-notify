@@ -21,17 +21,20 @@ export default function FunAiMessage({ message, onAction }: FunAiMessageProps) {
 
     // Extract action buttons from content
     const extractActions = (text: string) => {
-        const actionRegex = /\[ACTION:([^\]]+)\]/g;
+        // Tolerate optional spaces: [ ACTION:... ] or [ACTION:...]
+        const actionRegex = /\[\s*ACTION\s*:\s*([^\]]+)\]/gi;
         const actions: Array<{ type: string; params: string | null; label: string }> = [];
         let match;
         while ((match = actionRegex.exec(text)) !== null) {
-            const firstColon = match[1].indexOf(':');
-            const type = firstColon !== -1 ? match[1].substring(0, firstColon) : match[1];
-            const params = firstColon !== -1 ? match[1].substring(firstColon + 1) : null;
+            const inner = match[1].trim();
+            const firstColon = inner.indexOf(':');
+            const type = firstColon !== -1 ? inner.substring(0, firstColon).trim() : inner.trim();
+            const params = firstColon !== -1 ? inner.substring(firstColon + 1).trim() : null;
             
             let label = `⚡ Действие`;
             if (type === 'ticket' && params === 'list') label = '📬 Тикеты';
             else if (type === 'ticket' && params === 'close') label = '❌ Закрыть';
+            else if (type === 'ticket' && params?.startsWith('reply:')) label = '✉️ Отправить ответ';
             else if (type === 'navigate') label = '🔗 Перейти';
             else if (type === 'memory') label = '🧠 Запомнить';
             else if (type === 'stats') label = '📊 Статистика';
@@ -41,7 +44,7 @@ export default function FunAiMessage({ message, onAction }: FunAiMessageProps) {
         return actions;
     };
 
-    const cleanContent = message.content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
+    const cleanContent = message.content.replace(/\[\s*ACTION\s*:[^\]]+\]/gi, '').trim();
     const actions = !isUser ? extractActions(message.content) : [];
     const timeStr = new Date(message.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 

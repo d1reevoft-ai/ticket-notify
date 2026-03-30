@@ -2873,7 +2873,16 @@ async function draftTicketReply(bot, channelId, messages) {
         if (articles.length > 0) {
             const faqText = articles.map(a => {
                 const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
-                return `${title}\n${a.content}`;
+                // Strip slash-commands from macro content so AI never leaks them
+                let content = a.content;
+                if (a.title.startsWith('/')) {
+                    content = content.replace(/^\/.+$/gm, (line) => {
+                        const colonIdx = line.indexOf(':');
+                        if (colonIdx !== -1 && colonIdx < line.length - 1) return line.substring(colonIdx + 1).trim();
+                        return '';
+                    }).replace(/\n{3,}/g, '\n\n').trim();
+                }
+                return `${title}\n${content}`;
             }).join('\n\n');
             faqContext = `\n\n[БАЗА ЗНАНИЙ — используй только ТЕКСТ макросов для ответа, никогда не сообщай пользователю названия команд-макросов (начинающихся со слэша), так как это твои внутренние бинды]\n${faqText.substring(0, 6000)}`;
         }
