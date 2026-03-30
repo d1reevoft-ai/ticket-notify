@@ -70,14 +70,7 @@ export default function FunAiPanel({
         <AnimatePresence>
             {isOpen && (
                 <>
-                    {/* Backdrop */}
-                    <motion.div
-                        className="funai-backdrop"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={onClose}
-                    />
+                    {/* Backdrop removed so the user can interact with the dashboard while panel is open */}
                     {/* Panel */}
                     <motion.div
                         className="funai-panel"
