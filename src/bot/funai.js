@@ -28,7 +28,7 @@ const DEFAULT_GROQ_MODELS = [
 const DEFAULT_GEMINI_MODELS = [
     'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
-    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash',
 ];
 const DEFAULT_GEMINI_API_VERSIONS = ['v1beta', 'v1'];
 
@@ -488,7 +488,7 @@ class FunAI {
         const result = await this._requestAI(messages);
         if (!result.ok) {
             // Fallback: provide useful local data instead of just an error
-            const fallback = this._buildFallbackAnswer(question, context);
+            const fallback = this._buildFallbackAnswer(question, context, result.error);
             return { answer: fallback, level: 'l2', source: 'fallback', tokensUsed: 0 };
         }
 
@@ -508,7 +508,7 @@ class FunAI {
     }
 
     /** Build a useful fallback answer when AI providers fail */
-    _buildFallbackAnswer(question, context) {
+    _buildFallbackAnswer(question, context, errorMessage = '') {
         const activeCount = this.bot?.activeTickets?.size || 0;
         const stats = this.memory.getStats(1);
         const providers = this.getProviderStatus();
@@ -522,7 +522,12 @@ class FunAI {
         if (providerNames.length === 0) {
             answer += '⚠️ **Не настроены AI провайдеры.** Добавьте API ключи в Настройках → Gemini/Groq/OpenRouter ключи.';
         } else {
-            answer += `⚡ Настроенные провайдеры: ${providerNames.join(', ')} — возможно, истёк лимит запросов. Попробуйте позже.`;
+            answer += `⚡ Настроенные провайдеры: ${providerNames.join(', ')}\n`;
+            if (errorMessage) {
+                answer += `\n**Ошибка от провайдера:** \`${errorMessage}\`\nВозможно, истёк лимит запросов или ключ недействителен.`;
+            } else {
+                answer += '— возможно, истёк лимит запросов. Попробуйте позже.';
+            }
         }
 
         return answer;

@@ -380,6 +380,7 @@ class Bot {
                     this.config.ticketsCategoryId || '',
                     this.config.shiftChannelId || '',
                     JSON.stringify(this.config.geminiApiKeys || []),
+                    this.config.autoRepliesEnabled !== false ? 1 : 0,
                     this.userId
                 );
             } catch (e) { console.error(`[Bot:${this.userId}] ❌ saveConfigToDb FAILED:`, e.message); this.log(`❌ saveConfigToDb FAILED: ${e.message}`); }
