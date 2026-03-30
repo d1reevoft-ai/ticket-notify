@@ -15,6 +15,7 @@ export default function FunAiMessage({ message, onAction }: FunAiMessageProps) {
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.+?)\*/g, '<em>$1</em>')
             .replace(/`(.+?)`/g, '<code class="funai-inline-code">$1</code>')
+            .replace(/\n{3,}/g, '\n\n')
             .replace(/\n/g, '<br/>');
     };
 
@@ -24,17 +25,18 @@ export default function FunAiMessage({ message, onAction }: FunAiMessageProps) {
         const actions: Array<{ type: string; params: string | null; label: string }> = [];
         let match;
         while ((match = actionRegex.exec(text)) !== null) {
-            const parts = match[1].split(':');
-            const type = parts.slice(0, 2).join(':');
-            const params = parts.slice(2).join(':') || null;
-            const labels: Record<string, string> = {
-                'ticket:list': '📬 Тикеты',
-                'ticket:close': '❌ Закрыть',
-                'navigate:page': '🔗 Перейти',
-                'memory:add': '🧠 Запомнить',
-                'stats:summary': '📊 Статистика',
-            };
-            actions.push({ type, params, label: labels[type] || `⚡ ${type}` });
+            const firstColon = match[1].indexOf(':');
+            const type = firstColon !== -1 ? match[1].substring(0, firstColon) : match[1];
+            const params = firstColon !== -1 ? match[1].substring(firstColon + 1) : null;
+            
+            let label = `⚡ Действие`;
+            if (type === 'ticket' && params === 'list') label = '📬 Тикеты';
+            else if (type === 'ticket' && params === 'close') label = '❌ Закрыть';
+            else if (type === 'navigate') label = '🔗 Перейти';
+            else if (type === 'memory') label = '🧠 Запомнить';
+            else if (type === 'stats') label = '📊 Статистика';
+
+            actions.push({ type: match[1], params, label });
         }
         return actions;
     };
