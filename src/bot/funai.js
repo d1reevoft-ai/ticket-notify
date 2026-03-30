@@ -442,7 +442,7 @@ class FunAI {
         const mode = context.mode || 'widget';
 
         // Build system prompt
-        const systemPrompt = mode === 'ticket' ? this._buildTicketPrompt(context) : this._buildWidgetPrompt(context);
+        const systemPrompt = mode === 'ticket' ? await this._buildTicketPrompt(context) : await this._buildWidgetPrompt(context);
 
         // Build RAG context
         const ragResult = buildRagContextMessage({
@@ -633,7 +633,7 @@ class FunAI {
 
     // ═══ Prompt Builders ═════════════════════════════════════
 
-    _buildWidgetPrompt(context) {
+    async _buildWidgetPrompt(context) {
         const activeCount = this.bot?.activeTickets?.size || 0;
         const stats = this.memory.getStats(1);
         const today = stats.today;
@@ -643,6 +643,44 @@ class FunAI {
         contextInfo += `- Активные тикеты: ${activeCount}\n`;
         contextInfo += `- Запросов сегодня: ${today.totalRequests}\n`;
         contextInfo += `- Записей в памяти: ${stats.totals.memoryEntries}\n`;
+
+        // 🧠 Live Ticket Injection
+        if (context.currentPage && context.currentPage.startsWith('/tickets/')) {
+            const ticketId = context.currentPage.split('/')[2];
+            if (ticketId && this.bot?.activeTickets?.has(ticketId)) {
+                const ticket = this.bot.activeTickets.get(ticketId);
+                const msToMin = (ms) => Math.floor(ms / 60000);
+                const minsAgo = msToMin(Date.now() - ticket.createdAt);
+
+                contextInfo += `\n[ОТКРЫТЫЙ ТИКЕТ #${ticketId}]\n`;
+                contextInfo += `Автор: <@${ticket.openerId || 'неизвестно'}>\n`;
+                contextInfo += `Создан: ${minsAgo} минут назад\n`;
+
+                try {
+                    const rawMsgs = await this.bot.fetchChannelMessages(ticketId, 15);
+                    if (rawMsgs && rawMsgs.length > 0) {
+                        contextInfo += `\n[ПОСЛЕДНИЕ СООБЩЕНИЯ ТИКЕТА]\n`;
+                        const recent = rawMsgs.reverse();
+                        for (const msg of recent) {
+                            const author = msg.author?.username || 'Участник';
+                            let text = msg.content || '';
+                            if (msg.embeds && msg.embeds.length > 0) {
+                                text += ' ' + msg.embeds.map(e => e.description || e.title).join(' ');
+                            }
+                            if (text.trim()) {
+                                contextInfo += `${author}: ${text.trim()}\n`;
+                            }
+                        }
+                    } else {
+                        contextInfo += `\n[ПОСЛЕДНИЕ СООБЩЕНИЯ ТИКЕТА]\n(Сообщений нет или ошибка доступа)\n`;
+                    }
+                } catch (e) {
+                    contextInfo += `\n(Ошибка загрузки сообщений: ${e.message})\n`;
+                }
+            } else if (ticketId) {
+                contextInfo += `\n[ВНИМАНИЕ: Тикет #${ticketId} не найден в списке активных или уже закрыт.]\n`;
+            }
+        }
 
         let providerInfo = '';
         const creds = getAiCredentials(this.bot?.config || {});
@@ -654,7 +692,7 @@ class FunAI {
         return WIDGET_SYSTEM_PROMPT + contextInfo + providerInfo;
     }
 
-    _buildTicketPrompt(context) {
+    async _buildTicketPrompt(context) {
         return TICKET_SYSTEM_PROMPT;
     }
 
