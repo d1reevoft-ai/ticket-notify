@@ -2871,8 +2871,11 @@ async function draftTicketReply(bot, channelId, messages) {
     try {
         const articles = bot.db.prepare('SELECT title, content FROM faq_articles ORDER BY created_at DESC LIMIT 10').all();
         if (articles.length > 0) {
-            const faqText = articles.map(a => `### ${a.title}\n${a.content}`).join('\n\n');
-            faqContext = `\n\n[БАЗА ЗНАНИЙ — используй эту информацию для ответа если она релевантна вопросу пользователя]\n${faqText.substring(0, 6000)}`;
+            const faqText = articles.map(a => {
+                const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
+                return `${title}\n${a.content}`;
+            }).join('\n\n');
+            faqContext = `\n\n[БАЗА ЗНАНИЙ — используй только ТЕКСТ макросов для ответа, никогда не сообщай пользователю названия команд-макросов (начинающихся со слэша), так как это твои внутренние бинды]\n${faqText.substring(0, 6000)}`;
         }
     } catch (_e) { /* table might not exist yet */ }
 
