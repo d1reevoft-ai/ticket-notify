@@ -56,6 +56,8 @@ const WIDGET_SYSTEM_PROMPT = `Ты — FunAI, интеллектуальный A
 [ACTION:ticket:list] — показать тикеты
 [ACTION:navigate:PAGE] — перейти на страницу
 [ACTION:memory:add:ТЕКСТ] — запомнить информацию
+[ACTION:ticket:close] — закрыть текущий тикет (только если пользователь просит закрыть тикет и ты находишься на его странице)
+[ACTION:ticket:reply:ТЕКСТ] — отправить сообщение в текущий тикет от лица бота (где ТЕКСТ - само сообщение)
 
 ═══ ПРАВИЛА ═══
 1. Отвечай ТОЛЬКО на русском языке
@@ -219,6 +221,14 @@ class FunAI {
             // Intent Router: L0 → L1 → L2
             const result = await this._routeIntent(question, context);
 
+            // Execute Server-Side Actions
+            if (result.actions && result.actions.length > 0) {
+                const actionResults = await this._executeServerActions(result.actions, context);
+                if (actionResults.length > 0) {
+                    result.answer += '\n\n' + actionResults.join('\n');
+                }
+            }
+
             // Track stats
             this.memory.trackRequest(result.level, result.tokensUsed || 0);
 
@@ -247,6 +257,47 @@ class FunAI {
                 durationMs: Date.now() - startTime,
             };
         }
+    }
+
+    async _executeServerActions(actions, context) {
+        const results = [];
+        for (const action of actions) {
+            if (action.type === 'ticket:close') {
+                const ticketId = action.params || (context.currentPage?.startsWith('/tickets/') ? context.currentPage.split('/')[2] : null);
+                if (ticketId) {
+                    try {
+                        const res = await this.bot.closeTicketViaButton(ticketId);
+                        if (res.ok) {
+                            results.push(`✅ Тикет закрыт.`);
+                            action.type = 'noop'; // transform so frontend ignores it
+                        } else {
+                            results.push(`⚠️ Не удалось закрыть тикет: ${res.error}`);
+                        }
+                    } catch (e) {
+                        results.push(`⚠️ Ошибка закрытия: ${e.message}`);
+                    }
+                } else {
+                    results.push(`⚠️ Не указан ID тикета для закрытия.`);
+                }
+            } else if (action.type === 'ticket:reply') {
+                const ticketId = context.currentPage?.startsWith('/tickets/') ? context.currentPage.split('/')[2] : null;
+                const text = action.params;
+                if (ticketId && text) {
+                    try {
+                        const res = await this.bot.sendDiscordMessage(ticketId, text);
+                        if (res.ok) {
+                            results.push(`✅ Сообщение отправлено.`);
+                            action.type = 'noop';
+                        } else {
+                            results.push(`⚠️ Ошибка отправки: ${res.status}`);
+                        }
+                    } catch (e) {
+                        results.push(`⚠️ Ошибка отправки: ${e.message}`);
+                    }
+                }
+            }
+        }
+        return results;
     }
 
     // ═══ Intent Router ═══════════════════════════════════════
@@ -759,6 +810,60 @@ class FunAI {
         const result = await this._requestAI(formatted);
         if (!result.ok) throw new Error(result.error || 'Failed to analyze');
         return result.answerText;
+    }
+
+    /** Auto-learn from a closed ticket */
+    async learnFromClosedTicket(channelId, messages = [], ticketName = 'тикет', authorName = 'пользователь') {
+        const systemPrompt = `Ты — AI-аналитик базы знаний. Проанализируй диалог из закрытого тикета поддержки. Твоя задача: найти главную проблему пользователя и найденное решение.
+Если проблема была решена, верни ответ строго в формате JSON:
+{"question": "краткая суть проблемы", "answer": "кратко как её решили (вывод)"}
+Если проблема не ясна, это спам, болтовня или тикет закрыт без конкретного ответа/решения, верни ровно слово: null
+Отвечай ТОЛЬКО чистым JSON без форматирования Markdown и без дополнительных слов.`;
+        
+        const formatted = [{ role: 'system', content: systemPrompt }];
+        let msgCount = 0;
+        for (const msg of messages.slice(-30)) {
+            let text = msg.content || (msg.embeds ? msg.embeds.map(e => e.description || e.title).join(' ') : '');
+            if (!text || text.trim().length < 2) continue;
+            const role = !!msg.author?.bot ? 'assistant' : 'user';
+            const name = msg.author?.bot ? 'Модератор' : authorName;
+            formatted.push({ role, content: `${name}: ${text}` });
+            msgCount++;
+        }
+
+        if (msgCount < 3) return; // Too short to extract deep knowledge
+
+        try {
+            // maxTokens 400 is plenty for a short JSON response
+            const result = await this._requestAI(formatted, { maxTokens: 400 });
+            if (!result.ok) return;
+
+            const answer = result.answerText.trim();
+            if (answer && answer !== 'null' && answer !== 'None' && answer !== 'null.') {
+                try {
+                    // Try to parse JSON robustly
+                    const jsonMatch = answer.match(/\{[\s\S]*?\}/);
+                    const jsonStr = jsonMatch ? jsonMatch[0] : answer;
+                    const data = JSON.parse(jsonStr);
+
+                    if (data.question && data.answer && data.question.length > 5 && data.answer.length > 5) {
+                        this.memory.add({
+                            type: 'qa',
+                            category: 'auto-learn',
+                            question: data.question,
+                            content: data.answer,
+                            source: `ticket:${ticketName}`,
+                            confidence: 0.8
+                        });
+                        console.log(`${LOG} 🧠 Инсайт добавлен в память из закрытого тикета ${ticketName}`);
+                    }
+                } catch (e) {
+                    console.log(`${LOG} ⚠️ Ошибка парсинга JSON для автообучения (${ticketName}): ${answer.slice(0, 50)}`);
+                }
+            }
+        } catch (e) {
+            console.error(`${LOG} ❌ Ошибка автообучения из тикета: ${e.message}`);
+        }
     }
 
     // ═══ Memory ══════════════════════════════════════════════

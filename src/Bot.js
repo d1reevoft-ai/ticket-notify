@@ -773,6 +773,18 @@ class Bot {
             if (result.ok) {
                 this.log(`✅ Close button clicked successfully for ${channelId}`);
                 this.addLog('ticket', `Тикет ${channelId} закрыт через кнопку`);
+
+                // --- FunAI Auto-Learn Hook ---
+                if (this.funai && typeof this.funai.learnFromClosedTicket === 'function') {
+                    const ticketMeta = this.activeTickets.get(channelId);
+                    const ticketName = ticketMeta ? ticketMeta.channelName : channelId;
+                    const authorName = ticketMeta ? (ticketMeta.openerUsername || ticketMeta.openerId) : 'Пользователь';
+                    this.log(`🧠 Starting background auto-learn analysis for ${channelId}...`);
+                    this.funai.learnFromClosedTicket(channelId, messages, ticketName, authorName).catch(e => {
+                        this.log(`⚠️ Auto-learn error: ${e.message}`);
+                    });
+                }
+                
                 return { ok: true };
             } else {
                 this.log(`❌ Close button click failed: ${result.status} ${result.body?.slice(0, 200)}`);
