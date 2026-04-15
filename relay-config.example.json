@@ -1,0 +1,7 @@
+{
+    "discordToken": "ВСТАВЬ_СВОЙ_DISCORD_ТОКЕН",
+    "railwayUrl": "wss://worker-production-c151.up.railway.app",
+    "relaySecret": "stealth-relay-secret-2026",
+    "usePuppeteer": true,
+    "chromePath": "/usr/bin/chromium-browser"
+}

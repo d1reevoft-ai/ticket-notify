@@ -15,6 +15,7 @@ const { evaluateAutoReplyDecision } = require('./bot/autoReplyEngine');
 const { buildActivityMessage } = require('./bot/builders');
 const { connectGateway, cleanupGateway } = require('./bot/gateway');
 const { startPolling, stopPolling } = require('./bot/telegram');
+const { getDiscordRestHeaders, humanizeAutoReply } = require('./bot/stealthProfile');
 
 class Bot {
     constructor(userId, config, dataDir, io) {
@@ -552,6 +553,17 @@ class Bot {
     // ═══════════════════════════════════════════════════════
 
     async sendDiscordMessage(channelId, content, replyToMessageId, guildId, attachments = []) {
+        // ── Relay mode: send via stealth client (laptop) ──
+        if (this._relayMode && this._relaySendCommand && (!attachments || attachments.length === 0)) {
+            const res = await this._relaySendCommand({
+                type: 'sendMessage',
+                channelId,
+                content,
+                replyTo: replyToMessageId || null,
+            });
+            return res;
+        }
+
         const cachedGuildId = this.channelCache.get(String(channelId || ''))?.guild_id || '';
         const effectiveGuildId = String(guildId || cachedGuildId || '').trim();
         const forcedBotRoute = this.shouldUseBotForGuild(effectiveGuildId, channelId);
@@ -565,7 +577,15 @@ class Bot {
         const payload = { content };
         if (replyToMessageId) payload.message_reference = { message_id: replyToMessageId };
 
+        const isBotAuth = (header) => header.startsWith('Bot ');
+        const getStealthHeaders = (authHeader) => {
+            const isBotTok = isBotAuth(authHeader);
+            const token = isBotTok ? authHeader.replace('Bot ', '') : authHeader;
+            return getDiscordRestHeaders(token, { isBotToken: isBotTok });
+        };
+
         const sendOnce = async (authHeader) => {
+            const stealthHeaders = getStealthHeaders(authHeader);
             if (attachments && attachments.length > 0) {
                 const formData = new FormData();
                 formData.append('payload_json', JSON.stringify(payload));
@@ -573,22 +593,19 @@ class Bot {
                 attachments.forEach((att, idx) => {
                     const base64Data = att.data.replace(/^data:[a-zA-Z0-9+/]+;base64,/, '');
                     const buffer = Buffer.from(base64Data, 'base64');
-                    // In native fetch, buffer acts as Blob/File when wrapped properly. Wait, standard FormData takes Blobs.
                     const blob = new Blob([buffer], { type: att.mime || 'application/octet-stream' });
                     formData.append(`files[${idx}]`, blob, att.name || `file${idx}.png`);
                 });
 
                 try {
+                    const { 'Content-Type': _ct, 'Content-Length': _cl, ...fetchHeaders } = stealthHeaders;
                     const res = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            Authorization: authHeader,
-                            'User-Agent': 'Mozilla/5.0'
-                        },
+                        headers: fetchHeaders,
                         body: formData
                     });
                     const resBody = await res.text();
-                    return { ok: res.ok, status: res.status, body: resBody, usedAuth: authHeader.startsWith('Bot ') ? 'bot' : 'user' };
+                    return { ok: res.ok, status: res.status, body: resBody, usedAuth: isBotAuth(authHeader) ? 'bot' : 'user' };
                 } catch (err) {
                     return Promise.reject(err);
                 }
@@ -596,9 +613,10 @@ class Bot {
                 const body = JSON.stringify(payload);
                 return new Promise((resolve, reject) => {
                     const u = new URL(url);
-                    const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' } }, res => {
+                    const headers = { ...stealthHeaders, 'Content-Length': Buffer.byteLength(body) };
+                    const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers }, res => {
                         let chunks = ''; res.on('data', c => chunks += c);
-                        res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks, usedAuth: authHeader.startsWith('Bot ') ? 'bot' : 'user' }));
+                        res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks, usedAuth: isBotAuth(authHeader) ? 'bot' : 'user' }));
                     });
                     req.on('error', reject); req.write(body); req.end();
                 });
@@ -624,12 +642,18 @@ class Bot {
     }
 
     async editDiscordMessage(channelId, messageId, content) {
-        const authHeader = this.getDiscordAuthorizationHeader();
+        if (this._relayMode && this._relaySendCommand) {
+            return this._relaySendCommand({ type: 'editMessage', channelId, messageId, content });
+        }
+        const token = this.getDiscordGatewayToken();
+        const isBotTok = this.isDiscordBotAuthMode();
+        const stealthHeaders = getDiscordRestHeaders(token, { isBotToken: isBotTok });
         const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`;
         const body = JSON.stringify({ content });
         return new Promise((resolve, reject) => {
             const u = new URL(url);
-            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' } }, res => {
+            const headers = { ...stealthHeaders, 'Content-Length': Buffer.byteLength(body) };
+            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'PATCH', headers }, res => {
                 let chunks = ''; res.on('data', c => chunks += c);
                 res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
             });
@@ -638,11 +662,17 @@ class Bot {
     }
 
     async deleteDiscordMessage(channelId, messageId) {
-        const authHeader = this.getDiscordAuthorizationHeader();
+        if (this._relayMode && this._relaySendCommand) {
+            return this._relaySendCommand({ type: 'deleteMessage', channelId, messageId });
+        }
+        const token = this.getDiscordGatewayToken();
+        const isBotTok = this.isDiscordBotAuthMode();
+        const stealthHeaders = getDiscordRestHeaders(token, { isBotToken: isBotTok });
         const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`;
         return new Promise((resolve, reject) => {
             const u = new URL(url);
-            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'DELETE', headers: { Authorization: authHeader, 'User-Agent': 'Mozilla/5.0' } }, res => {
+            const { 'Content-Type': _ct, ...delHeaders } = stealthHeaders;
+            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'DELETE', headers: delHeaders }, res => {
                 let chunks = ''; res.on('data', c => chunks += c);
                 res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
             });
@@ -651,11 +681,15 @@ class Bot {
     }
 
     async addDiscordReaction(channelId, messageId, emoji) {
-        const authHeader = this.getDiscordAuthorizationHeader();
+        const token = this.getDiscordGatewayToken();
+        const isBotTok = this.isDiscordBotAuthMode();
+        const stealthHeaders = getDiscordRestHeaders(token, { isBotToken: isBotTok });
         const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`;
         return new Promise((resolve, reject) => {
             const u = new URL(url);
-            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'PUT', headers: { Authorization: authHeader, 'User-Agent': 'Mozilla/5.0', 'Content-Length': '0' } }, res => {
+            const { 'Content-Type': _ct, ...reactHeaders } = stealthHeaders;
+            reactHeaders['Content-Length'] = '0';
+            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'PUT', headers: reactHeaders }, res => {
                 let chunks = ''; res.on('data', c => chunks += c);
                 res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
             });
@@ -677,11 +711,19 @@ class Bot {
     }
 
     async triggerDiscordTyping(channelId) {
-        const authHeader = this.getDiscordAuthorizationHeader();
+        if (this._relayMode && this._relaySendCommand) {
+            this._relaySendCommand({ type: 'triggerTyping', channelId });
+            return { ok: true };
+        }
+        const token = this.getDiscordGatewayToken();
+        const isBotTok = this.isDiscordBotAuthMode();
+        const stealthHeaders = getDiscordRestHeaders(token, { isBotToken: isBotTok });
         const url = `https://discord.com/api/v9/channels/${channelId}/typing`;
         return new Promise((resolve, reject) => {
             const u = new URL(url);
-            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { Authorization: authHeader, 'User-Agent': 'Mozilla/5.0', 'Content-Length': '0' } }, res => {
+            const { 'Content-Type': _ct, ...typingHeaders } = stealthHeaders;
+            typingHeaders['Content-Length'] = '0';
+            const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: typingHeaders }, res => {
                 let chunks = ''; res.on('data', c => chunks += c);
                 res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
             });
@@ -690,11 +732,14 @@ class Bot {
     }
 
     async fetchChannelMessages(channelId, limit = 100, before = null) {
-        const authHeader = this.getDiscordAuthorizationHeader();
+        const token = this.getDiscordGatewayToken();
+        const isBotTok = this.isDiscordBotAuthMode();
+        const stealthHeaders = getDiscordRestHeaders(token, { isBotToken: isBotTok });
         try {
             let url = `https://discord.com/api/v9/channels/${channelId}/messages?limit=${limit}`;
             if (before) url += `&before=${before}`;
-            const res = await this.httpGet(url, { Authorization: authHeader });
+            const { 'Content-Type': _ct, ...getHeaders } = stealthHeaders;
+            const res = await this.httpGet(url, getHeaders);
             return res.ok ? JSON.parse(res.body) : [];
         } catch { return []; }
     }

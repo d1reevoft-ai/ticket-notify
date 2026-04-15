@@ -834,6 +834,10 @@ async function main() {
         });
     }
 
+    // 3.5 Set up Relay Bridge (stealth client from laptop)
+    const { setupRelay } = require('./relay');
+    setupRelay(server, botManager);
+
     // 4. Start HTTP server
     const port = process.env.PORT || 3001;
     server.listen(port, () => {

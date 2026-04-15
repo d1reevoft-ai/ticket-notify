@@ -12,6 +12,7 @@ const { evaluateAutoReplyDecision } = require('./autoReplyEngine');
 const { buildRagContextMessage, sanitizeResponseLinks } = require('./ragEngine');
 const funtimeServerRules = require('./funtimeServerRules');
 const defaultBinds = require('./defaultBinds');
+const { buildIdentifyPayload, getDiscordRestHeaders, humanizeAutoReply, getXSuperPropertiesHeader } = require('./stealthProfile');
 
 const GATEWAY_URL = 'wss://gateway.discord.gg/?v=9&encoding=json';
 const RESUMABLE_CODES = [4000, 4001, 4002, 4003, 4005, 4007, 4009];
@@ -292,11 +293,19 @@ async function sendDiscordMessageSmart(bot, channelId, content, replyToMessageId
     const parts = splitDiscordMessage(content, 1850);
     if (parts.length === 0) return { ok: false, status: 400, body: 'empty_message' };
 
+    // Humanize: trigger typing indicator and wait before sending (anti-detection)
+    await humanizeAutoReply(
+        () => bot.triggerDiscordTyping(channelId),
+        content
+    );
+
     let firstRes = null;
     for (let i = 0; i < parts.length; i++) {
         const res = await bot.sendDiscordMessage(channelId, parts[i], i === 0 ? replyToMessageId : undefined, guildId);
         if (!firstRes) firstRes = res;
         if (!res.ok) return res;
+        // Small delay between multi-part messages
+        if (i < parts.length - 1) await sleep(800 + Math.random() * 1200);
     }
     return firstRes || { ok: false, status: 500, body: 'send_failed' };
 }
@@ -1618,13 +1627,7 @@ function connectGateway(bot) {
                             compress: false,
                             large_threshold: 250,
                         }
-                        : {
-                            token,
-                            properties: { os: 'Windows', browser: 'Chrome', device: '' },
-                            presence: { status: 'online', activities: [], since: 0, afk: false },
-                            compress: false,
-                            large_threshold: 250,
-                        };
+                        : buildIdentifyPayload(token);
                     ws.send(JSON.stringify({ op: 2, d: payload }));
                 }
                 break;
@@ -1820,6 +1823,8 @@ function handleDispatch(bot, event, d) {
                     const delaySec = decision.ruleId === 'moderation_check' ? 2 : (((cfg.autoReplies || []).find(r => (r.id || '') === decision.ruleId || r.name === decision.ruleName)?.delay) || 2);
                     setTimeout(async () => {
                         try {
+                            // Humanize: show typing before auto-reply
+                            await humanizeAutoReply(() => bot.triggerDiscordTyping(d.channel_id), decision.response);
                             await bot.sendDiscordMessage(d.channel_id, decision.response, replyMsgId, d.guild_id);
                             bot.log(`✅ Auto-reply sent: "${decision.ruleName}"`, 'autoreply', details);
                             bot.enqueue({ text: `🤖 <b>Авто-ответ отправлен</b>\n\n📋 <b>Правило:</b> ${decision.ruleName}\n🧾 <b>rule_id:</b> <code>${decision.ruleId}</code>\n🎯 <b>confidence:</b> <code>${Number(decision.confidence || 0).toFixed(2)}</code>\n🔎 <b>source:</b> <code>${decision.source}</code>\n👤 <b>Игрок:</b> ${d.author?.username || 'unknown'}\n💬 <b>Сообщение:</b> <i>${(d.content || '').slice(0, 150)}</i>` });
@@ -2104,6 +2109,8 @@ function handleDispatch(bot, event, d) {
                         const chId = d.channel_id;
                         setTimeout(async () => {
                             try {
+                                // Humanize: show typing before auto-greet
+                                await humanizeAutoReply(() => bot.triggerDiscordTyping(chId), cfg.autoGreetText);
                                 await bot.sendDiscordMessage(chId, cfg.autoGreetText, undefined, guildId);
                                 bot.log(`👋 Auto-greet sent in #${record.channelName} (role mention)`);
                             } catch (e) { bot.log(`❌ Auto-greet error: ${e.message}`); }
@@ -2911,4 +2918,4 @@ async function draftTicketReply(bot, channelId, messages) {
     return answerText;
 }
 
-module.exports = { connectGateway, cleanupGateway, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply, requestAiAnswer, formatDashboardMessage };
+module.exports = { connectGateway, cleanupGateway, handleDispatchRelay: handleDispatch, loadSystemPrompt, invalidateSystemPromptCache, getAiUsageStats, resetAiUsageStats, generateTicketSummary, draftTicketReply, requestAiAnswer, formatDashboardMessage };

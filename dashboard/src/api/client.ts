@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// Backend URL: set VITE_BACKEND_URL when dashboard is separate from backend
+// e.g. VITE_BACKEND_URL=https://my-tunnel.trycloudflare.com
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+
 const client = axios.create({
-    baseURL: '/api',
+    baseURL: BACKEND_URL ? `${BACKEND_URL}/api` : '/api',
     timeout: 15000,
 });
 
