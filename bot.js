@@ -12,6 +12,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const { buildIdentifyPayload, getDiscordRestHeaders, humanizeAutoReply } = require('./src/bot/stealthProfile');
 
 let io; // Dashboard Socket.io instance
 
@@ -3685,13 +3686,7 @@ function sendIdentify() {
             compress: false,
             large_threshold: 250,
         }
-        : {
-            token: GATEWAY_TOKEN,
-            properties: { os: 'Windows', browser: 'Chrome', device: '' },
-            presence: { status: 'online', activities: [], since: 0, afk: false },
-            compress: false,
-            large_threshold: 250,
-        };
+        : buildIdentifyPayload(GATEWAY_TOKEN);
     ws.send(JSON.stringify({ op: 2, d: payload }));
 }
 
