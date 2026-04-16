@@ -27,6 +27,7 @@ export function useVoice(onSpeechEnd?: (finalTranscript: string) => void): UseVo
     const [interimTranscript, setInterimTranscript] = useState('');
     
     const recognitionRef = useRef<any>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
     const [supportAvailable, setSupportAvailable] = useState(true);
 
     useEffect(() => {
@@ -78,7 +79,10 @@ export function useVoice(onSpeechEnd?: (finalTranscript: string) => void): UseVo
             if (recognitionRef.current) {
                 recognitionRef.current.abort();
             }
-            window.speechSynthesis.cancel();
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.src = '';
+            }
         };
     }, []);
 
@@ -94,7 +98,9 @@ export function useVoice(onSpeechEnd?: (finalTranscript: string) => void): UseVo
         if (recognitionRef.current) {
             try {
                 // Cancel any ongoing speech
-                window.speechSynthesis.cancel();
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                }
                 setIsSpeaking(false);
                 
                 recognitionRef.current.start();
@@ -110,51 +116,61 @@ export function useVoice(onSpeechEnd?: (finalTranscript: string) => void): UseVo
         }
     }, []);
 
-    const speak = useCallback((text: string) => {
-        if (!window.speechSynthesis) return;
-
+    const speak = useCallback(async (text: string) => {
         // Cancel previous speech
-        window.speechSynthesis.cancel();
+        if (audioRef.current) {
+            audioRef.current.pause();
+        }
 
-        // Strip some markdown or raw text blocks that sound weird when spoken
         const cleanText = text
             .replace(/```[\s\S]*?```/g, ' Код скрыт ')
             .replace(/[*_~`]/g, '')
-            .substring(0, 300); // Limit to 300 chars so it doesn't ramble forever
+            .substring(0, 500);
 
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = 'ru-RU';
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
+        if (!cleanText.trim()) return;
 
-        // Look for premium Russian voices (Google/Microsoft usually provide better ones)
-        const voices = window.speechSynthesis.getVoices();
-        const ruVoices = voices.filter(v => v.lang.includes('ru'));
-        // Prefer a Microsoft or Google voice if available over the default choppy one
-        const preferredVoice = ruVoices.find(v => v.name.includes('Microsoft') || v.name.includes('Google')) || ruVoices[0];
-        
-        if (preferredVoice) {
-            utterance.voice = preferredVoice;
-        }
+        setIsSpeaking(true);
 
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch('/api/tts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ text: cleanText })
+            });
 
-        window.speechSynthesis.speak(utterance);
-    }, []);
+            if (!res.ok) throw new Error('TTS fetch failed');
 
-    const stopSpeaking = useCallback(() => {
-        if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            
+            const audio = new Audio(url);
+            audioRef.current = audio;
+
+            audio.onended = () => {
+                setIsSpeaking(false);
+                URL.revokeObjectURL(url);
+            };
+            audio.onerror = () => {
+                setIsSpeaking(false);
+                URL.revokeObjectURL(url);
+            };
+
+            await audio.play();
+        } catch (e) {
+            console.error('Edge TTS error:', e);
             setIsSpeaking(false);
         }
     }, []);
 
-    // Pre-load voices (Chrome requires this quirk sometimes)
-    useEffect(() => {
-        if (window.speechSynthesis) {
-            window.speechSynthesis.getVoices();
+    const stopSpeaking = useCallback(() => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            setIsSpeaking(false);
         }
     }, []);
 
