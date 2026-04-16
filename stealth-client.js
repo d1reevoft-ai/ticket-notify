@@ -42,9 +42,9 @@ let browser = null;
 let page = null;
 let gatewayIntercepted = false;
 
-function log(msg) {
+function log(msg, type = 'INFO') {
     const ts = new Date().toLocaleTimeString('ru-RU', { timeZone: 'Europe/Kiev' });
-    console.log(`${LOG} [${ts}] ${msg}`);
+    console.log(`[${ts}] [${type}] ${msg}`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -97,6 +97,7 @@ function sendToRailway(data) {
 // ═══════════════════════════════════════════════════════════════
 
 async function handleRailwayCommand(msg) {
+    log(`Received command from Railway: ${msg.type}${msg.channelId ? ` (chan: ${msg.channelId})` : ''}`, 'RELAY');
     switch (msg.type) {
         case 'sendMessage': {
             const body = { content: msg.content };
@@ -145,6 +146,7 @@ async function handleRailwayCommand(msg) {
 }
 
 function discordRest(method, endpoint, body = null) {
+    log(`Discord REST: ${method} ${endpoint}`, 'HTTP');
     const headers = getDiscordRestHeaders(DISCORD_TOKEN, { isBotToken: false });
     const url = `https://discord.com/api/v9${endpoint}`;
     return new Promise((resolve) => {
@@ -156,9 +158,15 @@ function discordRest(method, endpoint, body = null) {
             const req = https.request(opts, (res) => {
                 let chunks = '';
                 res.on('data', c => chunks += c);
-                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
+                res.on('end', () => {
+                    log(`REST Response: ${method} ${endpoint} -> ${res.statusCode}`, 'HTTP');
+                    resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks });
+                });
             });
-            req.on('error', (e) => resolve({ ok: false, status: 0, body: e.message }));
+            req.on('error', (e) => {
+                log(`REST Error: ${method} ${endpoint} -> ${e.message}`, 'ERROR');
+                resolve({ ok: false, status: 0, body: e.message });
+            });
             req.write(data);
             req.end();
         } else {
@@ -166,9 +174,15 @@ function discordRest(method, endpoint, body = null) {
             const req = https.request(opts, (res) => {
                 let chunks = '';
                 res.on('data', c => chunks += c);
-                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks }));
+                res.on('end', () => {
+                    log(`REST Response: ${method} ${endpoint} -> ${res.statusCode}`, 'HTTP');
+                    resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: chunks });
+                });
             });
-            req.on('error', (e) => resolve({ ok: false, status: 0, body: e.message }));
+            req.on('error', (e) => {
+                log(`REST Error: ${method} ${endpoint} -> ${e.message}`, 'ERROR');
+                resolve({ ok: false, status: 0, body: e.message });
+            });
             req.end();
         }
     });
@@ -251,14 +265,15 @@ async function launchBrowser() {
     await page.exposeFunction('__onGatewayDispatch', (event, dataJson, seq) => {
         try {
             const data = JSON.parse(dataJson);
+            log(`Discord Event: ${event}`, 'GATEWAY');
             sendToRailway({ type: 'dispatch', event, data, seq });
 
             if (event === 'READY') {
                 gatewayIntercepted = true;
-                log(`✅ READY — user: ${data.user?.username} (${data.user?.id})`);
+                log(`✅ READY — user: ${data.user?.username} (${data.user?.id})`, 'AUTH');
             }
         } catch (e) {
-            log(`⚠️ Dispatch parse error: ${e.message}`);
+            log(`⚠️ Dispatch parse error: ${e.message}`, 'ERROR');
         }
     });
 
@@ -342,28 +357,48 @@ function connectNodeGateway() {
         switch (data.op) {
             case 10:
                 receivedAck = true;
+                log(`Gateway Hello. Interval: ${data.d.heartbeat_interval}ms`, 'GATEWAY');
                 const jitter = Math.random() * data.d.heartbeat_interval;
                 setTimeout(() => {
+                    log(`Sending first heartbeat`, 'GATEWAY');
                     if (discordWs?.readyState === WebSocket.OPEN) discordWs.send(JSON.stringify({ op: 1, d: seq }));
                     heartbeatTimer = setInterval(() => {
-                        if (!receivedAck) { discordWs?.close(4000); return; }
+                        if (!receivedAck) { log('No heartbeat ACK received, reconnecting...', 'WARNING'); discordWs?.close(4000); return; }
                         receivedAck = false;
+                        log(`Sending heartbeat`, 'GATEWAY');
                         if (discordWs?.readyState === WebSocket.OPEN) discordWs.send(JSON.stringify({ op: 1, d: seq }));
                     }, data.d.heartbeat_interval);
                 }, jitter);
 
                 if (sessionId && seq) {
+                    log(`Sending Resume request`, 'AUTH');
                     discordWs.send(JSON.stringify({ op: 6, d: { token: DISCORD_TOKEN, session_id: sessionId, seq } }));
                 } else {
+                    log(`Sending Identify request`, 'AUTH');
                     discordWs.send(JSON.stringify({ op: 2, d: buildIdentifyPayload(DISCORD_TOKEN) }));
                 }
                 break;
-            case 11: receivedAck = true; break;
-            case 7: discordWs.close(4000); break;
-            case 9: sessionId = null; seq = null; setTimeout(() => discordWs.close(4000), 2000); break;
+            case 11: 
+                receivedAck = true; 
+                log(`Heartbeat ACK received`, 'GATEWAY');
+                break;
+            case 7: 
+                log(`Reconnect request received`, 'GATEWAY');
+                discordWs.close(4000); 
+                break;
+            case 9: 
+                log(`Invalid Session`, 'WARNING');
+                sessionId = null; 
+                seq = null; 
+                setTimeout(() => discordWs.close(4000), 2000); 
+                break;
             case 0:
-                if (data.t === 'READY') { sessionId = data.d.session_id; log(`✅ READY — ${data.d.user?.username}`); }
-                if (data.t === 'RESUMED') log('✅ RESUMED');
+                log(`Discord Event (Node): ${data.t}`, 'GATEWAY');
+                if (data.t === 'READY') { 
+                    sessionId = data.d.session_id; 
+                    log(`✅ READY — ${data.d.user?.username}`, 'AUTH'); 
+                }
+                if (data.t === 'RESUMED') log('✅ RESUMED', 'AUTH');
                 sendToRailway({ type: 'dispatch', event: data.t, data: data.d, seq });
                 break;
         }
