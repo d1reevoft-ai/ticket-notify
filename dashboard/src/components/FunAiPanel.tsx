@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, Trash2, Sparkles, MessageSquare, ChevronDown, Plus } from 'lucide-react';
+import { X, Send, Trash2, Sparkles, MessageSquare, ChevronDown, Plus, Mic } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import FunAiMessage from './FunAiMessage';
 import type { ChatMessage } from '../hooks/useFunAi';
 import type { FunAiSuggestion, FunAiSession } from '../api/funai';
+import { useVoice } from '../hooks/useVoice';
 
 interface FunAiPanelProps {
     isOpen: boolean;
@@ -38,6 +39,48 @@ export default function FunAiPanel({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const navigate = useNavigate();
+    const [isVoiceMode, setIsVoiceMode] = useState(false);
+    const lastSpokenMessageId = useRef<string | null>(null);
+
+    const handleSpeechEnd = useCallback((text: string) => {
+        if (text.trim() && !isThinking) {
+            onSend(text.trim());
+        }
+    }, [isThinking, onSend]);
+
+    const {
+        isListening,
+        isSpeaking,
+        transcript,
+        interimTranscript,
+        startListening,
+        stopListening,
+        speak,
+        stopSpeaking,
+        supportAvailable
+    } = useVoice(handleSpeechEnd);
+
+    // Speak AI messages automatically if Voice Mode is active
+    useEffect(() => {
+        if (!isVoiceMode || !supportAvailable) return;
+        
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id !== lastSpokenMessageId.current && !isThinking) {
+            lastSpokenMessageId.current = lastMsg.id;
+            speak(lastMsg.content);
+        }
+    }, [messages, isThinking, isVoiceMode, speak, supportAvailable]);
+
+    const toggleVoiceMode = () => {
+        if (isVoiceMode) {
+            stopListening();
+            stopSpeaking();
+            setIsVoiceMode(false);
+        } else {
+            setIsVoiceMode(true);
+            startListening();
+        }
+    };
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -175,8 +218,54 @@ export default function FunAiPanel({
                             </AnimatePresence>
                         </div>
 
+                        {/* Voice Mode Overlay */}
+                        <AnimatePresence>
+                            {isVoiceMode && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="funai-voice-overlay absolute inset-0 z-[25] flex flex-col items-center justify-center overflow-hidden"
+                                >
+                                    <div className="absolute top-4 right-4 z-30">
+                                        <button
+                                            onClick={toggleVoiceMode}
+                                            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex-1 flex flex-col items-center justify-center w-full max-w-[80%] mx-auto relative z-20">
+                                        <div className="text-center mb-12 min-h-[60px]">
+                                            <p className="text-sm text-purple-200/60 font-medium mb-1 uppercase tracking-widest">
+                                                {isListening ? 'Слушаю вас...' : isThinking ? 'Думаю...' : isSpeaking ? 'Отвечаю...' : 'Голосовой режим'}
+                                            </p>
+                                            <p className="text-xl text-white font-medium drop-shadow-md">
+                                                {interimTranscript || transcript || (isSpeaking ? 'Говорит FunAI' : (isListening ? '...' : ''))}
+                                            </p>
+                                        </div>
+
+                                        <div 
+                                            className={`funai-voice-orb-container ${isListening ? 'listening' : isSpeaking ? 'speaking' : isThinking ? 'thinking' : ''}`}
+                                            onClick={() => {
+                                                if (isSpeaking) stopSpeaking();
+                                                else if (isListening) stopListening();
+                                                else startListening();
+                                            }}
+                                        >
+                                            <div className="funai-voice-orb">
+                                                <div className="funai-voice-orb-glow"></div>
+                                                <div className="funai-voice-orb-core"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* Messages */}
-                        <div className="funai-panel__messages custom-scrollbar">
+                        <div className={`funai-panel__messages custom-scrollbar ${isVoiceMode ? 'opacity-0 pointer-events-none' : ''}`}>
                             {messages.length === 0 && !isThinking && (
                                 <div className="funai-panel__empty">
                                     <Sparkles className="w-10 h-10 text-purple-400 mb-3" />
@@ -229,7 +318,7 @@ export default function FunAiPanel({
                         </div>
 
                         {/* Input */}
-                        <div className="funai-panel__input-area">
+                        <div className={`funai-panel__input-area ${isVoiceMode ? 'opacity-0 pointer-events-none' : ''}`}>
                             <div className="funai-panel__input-wrap">
                                 <textarea
                                     ref={inputRef}
@@ -241,6 +330,15 @@ export default function FunAiPanel({
                                     rows={1}
                                     disabled={isThinking}
                                 />
+                                {supportAvailable && (
+                                    <button
+                                        className="funai-panel__mic-btn text-purple-400 hover:text-purple-300 transition-colors p-2"
+                                        onClick={toggleVoiceMode}
+                                        title="Голосовой режим"
+                                    >
+                                        <Mic className="w-4 h-4" />
+                                    </button>
+                                )}
                                 <button
                                     className="funai-panel__send-btn"
                                     onClick={handleSend}
