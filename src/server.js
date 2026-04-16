@@ -616,18 +616,18 @@ async function main() {
 
             const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/[*_~`]/g, '');
             
-            // Get streaming chunks
-            const rawAudioStream = await edgeTtsInstance.ttsPromise(cleanText);
+            const tmpPath = path.join(process.cwd(), 'data', `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
             
-            // Collect chunks into a buffer
-            const chunks = [];
-            for await (const chunk of rawAudioStream) {
-                chunks.push(chunk);
-            }
-            const buffer = Buffer.concat(chunks);
+            // Generate and save to temp file
+            await edgeTtsInstance.ttsPromise(cleanText, tmpPath);
             
             res.set('Content-Type', 'audio/mpeg');
-            res.send(buffer);
+            res.sendFile(tmpPath, (err) => {
+                if (err) console.error('[TTS] Error sending file:', err);
+                try {
+                    fs.unlinkSync(tmpPath);
+                } catch (e) {}
+            });
         } catch (err) {
             console.error('[TTS] Error:', err);
             res.status(500).json({ error: 'Speech Synthesis Failed' });
