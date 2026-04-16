@@ -77,6 +77,10 @@ export default function FunAiPanel({
             stopSpeaking();
             setIsVoiceMode(false);
         } else {
+            // Mark current last message as spoken so it doesn't instantly read old history
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg) lastSpokenMessageId.current = lastMsg.id;
+            
             setIsVoiceMode(true);
             startListening();
         }
