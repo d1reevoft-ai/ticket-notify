@@ -248,8 +248,9 @@ class FunAI {
 
             // Save to conversation (widget mode)
             if (mode === 'widget' && context.userId) {
-                this.memory.saveConversation(context.userId, 'user', question, null, context.currentPage || '');
-                this.memory.saveConversation(context.userId, 'assistant', result.answer, result.actions || null, context.currentPage || '');
+                const sessionId = context.sessionId || 'default';
+                this.memory.saveConversation(context.userId, 'user', question, null, context.currentPage || '', sessionId);
+                this.memory.saveConversation(context.userId, 'assistant', result.answer, result.actions || null, context.currentPage || '', sessionId);
             }
 
             return {
@@ -547,7 +548,8 @@ class FunAI {
 
         // Add conversation history for widget mode
         if (mode === 'widget' && context.userId) {
-            const history = this.memory.getConversations(context.userId, 20);
+            const sessionId = context.sessionId || 'default';
+            const history = this.memory.getConversations(context.userId, 20, sessionId);
             for (const msg of history) {
                 messages.push({ role: msg.role, content: msg.content });
             }

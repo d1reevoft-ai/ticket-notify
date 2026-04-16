@@ -5,7 +5,14 @@ export interface FunAiMessage {
     content: string;
     actions?: string;
     context_page?: string;
+    session_id?: string;
     created_at: number;
+}
+
+export interface FunAiSession {
+    id: string;
+    title: string;
+    updatedAt: number;
 }
 
 export interface FunAiMemoryEntry {
@@ -44,18 +51,25 @@ export interface FunAiSuggestion {
 }
 
 export const funaiApi = {
-    chat: async (message: string, currentPage: string = '') => {
-        const { data } = await client.post<FunAiChatResponse>('/funai/chat', { message, currentPage });
+    chat: async (message: string, currentPage: string = '', sessionId?: string) => {
+        const { data } = await client.post<FunAiChatResponse>('/funai/chat', { message, currentPage, sessionId });
         return data;
     },
 
-    getConversations: async (limit = 50) => {
-        const { data } = await client.get<{ conversations: FunAiMessage[] }>(`/funai/conversations?limit=${limit}`);
+    getConversations: async (limit = 50, sessionId?: string) => {
+        const query = sessionId ? `?limit=${limit}&sessionId=${encodeURIComponent(sessionId)}` : `?limit=${limit}`;
+        const { data } = await client.get<{ conversations: FunAiMessage[] }>(`/funai/conversations${query}`);
         return data;
     },
 
-    clearConversations: async () => {
-        const { data } = await client.delete('/funai/conversations');
+    clearConversations: async (sessionId?: string) => {
+        const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+        const { data } = await client.delete(`/funai/conversations${query}`);
+        return data;
+    },
+
+    getSessions: async () => {
+        const { data } = await client.get<{ sessions: FunAiSession[] }>('/funai/sessions');
         return data;
     },
 

@@ -87,6 +87,10 @@ export default function DashboardLayout() {
                 suggestions={funai.suggestions}
                 onSend={funai.sendMessage}
                 onClear={funai.clearHistory}
+                chatSessions={funai.chatSessions}
+                activeSessionId={funai.activeSessionId}
+                newSession={funai.newSession}
+                switchSession={funai.switchSession}
             />
         </div>
     );
