@@ -188,6 +188,67 @@ function createFunAiRoutes(db, botManager) {
         }
     });
 
+    // ── API Keys ──────────────────────────────────────────────
+    router.get('/keys', authenticateToken, (req, res) => {
+        try {
+            const keys = db.prepare('SELECT id, name, api_key, created_at FROM funai_api_keys WHERE user_id = ? ORDER BY created_at DESC').all(req.user.userId);
+            res.json({ keys });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+
+    router.post('/keys', authenticateToken, (req, res) => {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name required' });
+        const crypto = require('crypto');
+        const apiKey = 'sk-funai-' + crypto.randomBytes(24).toString('hex');
+        try {
+            const info = db.prepare('INSERT INTO funai_api_keys (user_id, name, api_key) VALUES (?, ?, ?)').run(req.user.userId, name, apiKey);
+            res.json({ ok: true, id: info.lastInsertRowid, apiKey });
+        } catch(err) { res.status(500).json({ error: err.message }); }
+    });
+
+    router.delete('/keys/:id', authenticateToken, (req, res) => {
+        try {
+            db.prepare('DELETE FROM funai_api_keys WHERE id = ? AND user_id = ?').run(req.params.id, req.user.userId);
+            res.json({ ok: true });
+        } catch(err) { res.status(500).json({ error: err.message }); }
+    });
+
+    // ── Public Chat Endpoint ──────────────────────────────────
+    router.post('/public/chat', async (req, res) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+        }
+        const apiKey = authHeader.split(' ')[1];
+        
+        try {
+            const tokenRecord = db.prepare('SELECT user_id FROM funai_api_keys WHERE api_key = ?').get(apiKey);
+            if (!tokenRecord) return res.status(403).json({ error: 'Invalid API Key' });
+            
+            const bot = botManager.bots.get(tokenRecord.user_id);
+            if (!bot || !bot.funai) return res.status(500).json({ error: 'FunAI not initialized for this user' });
+            
+            const { message, context } = req.body;
+            if (!message) return res.status(400).json({ error: 'message required in request body' });
+            
+            const result = await bot.funai.ask(message, {
+                mode: 'api',
+                currentPage: context || 'api_request',
+                userId: tokenRecord.user_id,
+            });
+            
+            res.json({
+                answer: result.answer,
+                level: result.level,
+                tokensUsed: result.tokensUsed,
+                actions: result.actions || [] // Expose if any actions triggered
+            });
+        } catch(err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     return router;
 }
 
