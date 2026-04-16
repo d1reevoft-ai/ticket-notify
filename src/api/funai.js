@@ -12,7 +12,16 @@ function createFunAiRoutes(db, botManager) {
         const userId = req.user?.userId;
         if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return null; }
         const bot = botManager.bots.get(userId);
-        if (!bot || !bot.funai) { res.status(400).json({ error: 'FunAI not initialized' }); return null; }
+        if (!bot) { 
+            console.log(`[API] getFunAI: bot is undefined for user ${userId}`); 
+            res.status(400).json({ error: 'FunAI not initialized — Bot is offline' }); 
+            return null; 
+        }
+        if (!bot.funai) {
+            console.log(`[API] getFunAI: bot.funai is undefined for user ${userId}`); 
+            res.status(400).json({ error: 'FunAI not initialized' }); 
+            return null;
+        }
         return bot.funai;
     }
 
