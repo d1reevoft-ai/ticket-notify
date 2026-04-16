@@ -124,10 +124,15 @@ class BotManager {
 
         const config = this.getUserConfig(userId);
         const hasDiscord = config && (config.discordToken || config.discordBotToken);
-        if (!config || !hasDiscord || !config.tgToken || !config.tgChatId) {
-            console.log(`[Manager] Unconfigured or missing tokens for user ${userId}. Cannot start bot.`);
-            console.log(`[Manager]   discordToken: ${config?.discordToken ? 'SET' : 'MISSING'}, discordBotToken: ${config?.discordBotToken ? 'SET' : 'MISSING'}, tgToken: ${config?.tgToken ? 'SET' : 'MISSING'}, tgChatId: ${config?.tgChatId ? 'SET' : 'MISSING'}`);
+        if (!config) {
+            console.log(`[Manager] User ${userId} has no config. Cannot start bot.`);
             return false;
+        }
+        if (!config.tgToken || !config.tgChatId) {
+            console.log(`[Manager] Missing Telegram tokens for user ${userId}. Relying on Stealth Proxy.`);
+        }
+        if (!hasDiscord) {
+            console.log(`[Manager] Missing Discord tokens for user ${userId}. Bot will rely on Stealth Proxy.`);
         }
 
         console.log(`[Manager] Starting bot for user ${userId}...`);
