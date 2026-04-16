@@ -132,7 +132,7 @@ export function useVoice(onSpeechEnd?: (finalTranscript: string) => void): UseVo
         setIsSpeaking(true);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('dashboard_token');
             const res = await fetch('/api/tts', {
                 method: 'POST',
                 headers: {
