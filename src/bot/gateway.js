@@ -1552,6 +1552,11 @@ function getRestAuthHeader(bot) {
 
 function connectGateway(bot) {
     if (bot.destroyed) return;
+    if (bot._relayMode) {
+        bot.log(`🔌 Gateway connection skipped (relay mode active)`);
+        return;
+    }
+
     const token = (typeof bot.getDiscordGatewayToken === 'function')
         ? bot.getDiscordGatewayToken()
         : (bot.config.discordBotToken || bot.config.discordToken || '');
@@ -1579,6 +1584,10 @@ function connectGateway(bot) {
     ws.on('close', (code) => {
         cleanupGateway(bot);
         if (bot.destroyed) return;
+        if (bot._relayMode) {
+            bot.log(`🔌 Gateway closed (${code}) — staying disconnected (relay mode active)`);
+            return;
+        }
         if (code === 4004) {
             // Optional fallback is disabled by default; selfbot setups should stay in user mode.
             const allowModeFallback = process.env.DISCORD_MODE_FALLBACK === '1';
