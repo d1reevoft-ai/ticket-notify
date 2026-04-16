@@ -46,15 +46,16 @@ class FunAIMemory {
                 created_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_funai_conv_user ON funai_conversations(user_id);
-            CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id);
         `);
 
         try {
             this.db.exec("ALTER TABLE funai_conversations ADD COLUMN session_id TEXT DEFAULT 'default'");
-            this.db.exec("CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id)");
         } catch (e) {
             // column already exists
         }
+
+        // Now safely create index because we are sure session_id exists
+        this.db.exec("CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id)");
 
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS funai_actions_log (
