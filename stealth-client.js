@@ -249,12 +249,14 @@ async function launchBrowser() {
         }
     });
 
-    // Inject Gateway WebSocket interceptor BEFORE any page scripts run
+    // Intercept Gateway WebSocket creation before page scripts run
     await page.evaluateOnNewDocument((token) => {
-        // Store token for login
+        // Force token into localStorage before Discord's security disables it
+        try { window.localStorage.setItem('token', `"${token}"`); } catch { }
+
+        // Store copy just in case
         window.__DISCORD_TOKEN = token;
 
-        // Intercept WebSocket creation to capture Gateway events
         const OrigWebSocket = window.WebSocket;
         window.WebSocket = function (url, protocols) {
             const ws = protocols
@@ -322,15 +324,6 @@ async function launchBrowser() {
     // Navigate to Discord and inject token
     log('🔐 Logging into Discord Web...', 'AUTH');
     await page.goto('https://discord.com/login', { waitUntil: 'networkidle2' });
-
-    // Set token in localStorage properly
-    await page.evaluate((t) => {
-        try {
-            window.localStorage.setItem('token', `"${t}"`);
-        } catch (e) {
-            console.error('Localstorage error:', e.message);
-        }
-    }, DISCORD_TOKEN);
 
     // Reload to trigger login with token
     await page.reload({ waitUntil: 'networkidle2' });
