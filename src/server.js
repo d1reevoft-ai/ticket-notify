@@ -616,7 +616,7 @@ async function main() {
 
             const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/[*_~`]/g, '');
             
-            const tmpPath = path.join(process.cwd(), 'data', `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
+            const tmpPath = path.join(DATA_DIR, `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
             
             // Generate and save to temp file
             await edgeTtsInstance.ttsPromise(cleanText, tmpPath);
