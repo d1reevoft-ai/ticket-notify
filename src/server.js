@@ -614,7 +614,11 @@ async function main() {
                 });
             }
 
-            const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/[*_~`]/g, '');
+            // Remove code blocks, markdown, and all emojis
+            const cleanText = text
+                .replace(/```[\s\S]*?```/g, '')
+                .replace(/[*_~`]/g, '')
+                .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '');
             
             const tmpPath = path.join(DATA_DIR, `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
             
