@@ -42,9 +42,23 @@ let browser = null;
 let page = null;
 let gatewayIntercepted = false;
 
+const colors = {
+    INFO: '\x1b[36m',     // Cyan
+    GATEWAY: '\x1b[35m',  // Magenta
+    AUTH: '\x1b[32m',     // Green
+    HTTP: '\x1b[33m',     // Yellow
+    ERROR: '\x1b[31m',    // Red
+    RELAY: '\x1b[94m',    // Light Blue
+    HEALTH: '\x1b[90m',   // Gray
+    DEBUG: '\x1b[90m',    // Gray
+    WARNING: '\x1b[38;5;208m' // Orange
+};
+
 function log(msg, type = 'INFO') {
     const ts = new Date().toLocaleTimeString('ru-RU', { timeZone: 'Europe/Kiev' });
-    console.log(`[${ts}] [${type}] ${msg}`);
+    const color = colors[type] || '\x1b[37m';
+    const reset = '\x1b[0m';
+    console.log(`\x1b[90m[${ts}]\x1b[0m ${color}[${type.padEnd(7)}]\x1b[0m ${msg}`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -54,16 +68,16 @@ function log(msg, type = 'INFO') {
 function connectToRailway() {
     if (railwayReconnectTimer) { clearTimeout(railwayReconnectTimer); railwayReconnectTimer = null; }
     const wsUrl = RAILWAY_URL.replace(/^http/, 'ws') + '/relay?secret=' + encodeURIComponent(RELAY_SECRET);
-    log(`🔗 Connecting to Railway: ${RAILWAY_URL}...`);
+    log(`🔗 Connecting to Railway: ${RAILWAY_URL}...`, 'INFO');
 
     try { railwayWs = new WebSocket(wsUrl); } catch (e) {
-        log(`❌ Railway connect error: ${e.message}`);
+        log(`❌ Railway connect error: ${e.message}`, 'ERROR');
         scheduleRailwayReconnect();
         return;
     }
 
     railwayWs.on('open', () => {
-        log('✅ Connected to Railway');
+        log('✅ Connected to Railway (Bot Brain)', 'INFO');
         sendToRailway({ type: 'auth', secret: RELAY_SECRET, mode: USE_PUPPETEER ? 'puppeteer' : 'node', ts: Date.now() });
     });
 
@@ -74,12 +88,12 @@ function connectToRailway() {
     });
 
     railwayWs.on('close', (code) => {
-        log(`🔌 Railway disconnected (${code})`);
+        log(`🔌 Railway disconnected (${code})`, 'WARNING');
         railwayWs = null;
         scheduleRailwayReconnect();
     });
 
-    railwayWs.on('error', (e) => log(`❌ Railway error: ${e.message}`));
+    railwayWs.on('error', (e) => log(`❌ Railway error: ${e.message}`, 'ERROR'));
 }
 
 function scheduleRailwayReconnect() {
@@ -97,7 +111,15 @@ function sendToRailway(data) {
 // ═══════════════════════════════════════════════════════════════
 
 async function handleRailwayCommand(msg) {
-    log(`Received command from Railway: ${msg.type}${msg.channelId ? ` (chan: ${msg.channelId})` : ''}`, 'RELAY');
+    if (msg.type !== 'ping') {
+        let action = msg.type;
+        if (action === 'sendMessage') action = '💬 Sending Msg';
+        if (action === 'editMessage') action = '📝 Editing Msg';
+        if (action === 'deleteMessage') action = '🗑️ Deleting Msg';
+        if (action === 'triggerTyping') action = '⌨️ Typing';
+        log(`${action}${msg.channelId ? ` (chan: ${msg.channelId})` : ''}`, 'RELAY');
+    }
+
     switch (msg.type) {
         case 'sendMessage': {
             const body = { content: msg.content };
