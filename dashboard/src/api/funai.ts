@@ -119,4 +119,20 @@ export const funaiApi = {
         const { data } = await client.post('/funai/execute', { action, params });
         return data;
     },
+
+    // ── API Keys ───────────────────────────────────────────
+    getKeys: async () => {
+        const { data } = await client.get<{ keys: Array<{ id: number, name: string, api_key: string, created_at: number }> }>('/funai/keys');
+        return data;
+    },
+
+    createKey: async (name: string) => {
+        const { data } = await client.post<{ ok: boolean, id: number, apiKey: string }>('/funai/keys', { name });
+        return data;
+    },
+
+    deleteKey: async (id: number) => {
+        const { data } = await client.delete(`/funai/keys/${id}`);
+        return data;
+    },
 };

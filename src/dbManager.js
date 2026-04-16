@@ -168,6 +168,23 @@ function initDb(dataDir) {
         console.error("[DB] Error creating faq_articles table:", e.message);
     }
 
+    // Create funai_api_keys table
+    try {
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS funai_api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                name TEXT NOT NULL,
+                api_key TEXT UNIQUE NOT NULL,
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+        `);
+        console.log('[DB] Ensured funai_api_keys table exists.');
+    } catch (e) {
+        console.error("[DB] Error creating funai_api_keys table:", e.message);
+    }
+
     // Migrate: add role column if missing
     try {
         const usersInfo = db.pragma('table_info(users)');

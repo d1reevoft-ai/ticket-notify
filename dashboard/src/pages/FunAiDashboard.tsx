@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Brain, Zap, Database, TrendingUp, Trash2, Plus, Search, RefreshCw, BookOpen } from 'lucide-react';
+import { Brain, Zap, Database, TrendingUp, Trash2, Plus, Search, RefreshCw, BookOpen, Key } from 'lucide-react';
 import { funaiApi, type FunAiMemoryEntry } from '../api/funai';
 
 interface StatsData {
@@ -44,20 +44,24 @@ export default function FunAiDashboard() {
     const [loading, setLoading] = useState(true);
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [newEntry, setNewEntry] = useState({ type: 'fact', category: '', question: '', content: '' });
-    const [activeTab, setActiveTab] = useState<'overview' | 'memory' | 'providers'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'memory' | 'providers' | 'api'>('overview');
+    const [apiKeys, setApiKeys] = useState<Array<{ id: number, name: string, api_key: string, created_at: number }>>([]);
+    const [newKeyName, setNewKeyName] = useState('');
 
     const fetchAll = useCallback(async () => {
         setLoading(true);
         try {
-            const [statsRes, memRes, provRes] = await Promise.all([
+            const [statsRes, memRes, provRes, keysRes] = await Promise.all([
                 funaiApi.getStats(),
                 funaiApi.getMemory({ search: searchQuery, type: filterType || undefined, limit: 100 }),
                 funaiApi.getProviders(),
+                funaiApi.getKeys().catch(() => ({ keys: [] })),
             ]);
             setStats(statsRes);
             setMemory(memRes.entries || []);
             setMemoryStats(memRes.stats || null);
             setProviders(provRes.providers || {});
+            setApiKeys(keysRes.keys || []);
         } catch {}
         setLoading(false);
     }, [searchQuery, filterType]);
@@ -80,6 +84,19 @@ export default function FunAiDashboard() {
     const handleLearn = async () => {
         const result = await funaiApi.learn();
         if (result.imported > 0) fetchAll();
+    };
+
+    const handleCreateKey = async () => {
+        if (!newKeyName.trim()) return;
+        await funaiApi.createKey(newKeyName);
+        setNewKeyName('');
+        fetchAll();
+    };
+
+    const handleDeleteKey = async (id: number) => {
+        if (!confirm('Точно удалить этот ключ?')) return;
+        await funaiApi.deleteKey(id);
+        fetchAll();
     };
 
     const today = stats?.today;
@@ -114,7 +131,7 @@ export default function FunAiDashboard() {
 
             {/* Tabs */}
             <div className="funai-dashboard__tabs">
-                {(['overview', 'memory', 'providers'] as const).map((tab) => (
+                {(['overview', 'memory', 'providers', 'api'] as const).map((tab) => (
                     <button
                         key={tab}
                         className={`funai-dashboard__tab ${activeTab === tab ? 'funai-dashboard__tab--active' : ''}`}
@@ -123,7 +140,8 @@ export default function FunAiDashboard() {
                         {tab === 'overview' && <TrendingUp className="w-4 h-4" />}
                         {tab === 'memory' && <Database className="w-4 h-4" />}
                         {tab === 'providers' && <Zap className="w-4 h-4" />}
-                        <span>{tab === 'overview' ? 'Обзор' : tab === 'memory' ? 'Память' : 'Провайдеры'}</span>
+                        {tab === 'api' && <Key className="w-4 h-4" />}
+                        <span>{tab === 'overview' ? 'Обзор' : tab === 'memory' ? 'Память' : tab === 'providers' ? 'Провайдеры' : 'API Ключи'}</span>
                     </button>
                 ))}
             </div>
@@ -325,6 +343,89 @@ export default function FunAiDashboard() {
                                 <p>Нет настроенных AI провайдеров.</p>
                                 <p className="text-sm text-muted-foreground">Добавьте API ключи в настройках.</p>
                             </div>
+                        )}
+                    </div>
+                </motion.div>
+            )}
+
+            {/* API Keys Tab */}
+            {activeTab === 'api' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="funai-dashboard__content">
+                    <div className="flex gap-4 mb-6">
+                        <div className="flex-1 bg-card rounded-lg border p-4 shadow-sm">
+                            <h3 className="text-lg font-semibold mb-2">Создать API Ключ</h3>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    placeholder="Название (напр. 'App 1')" 
+                                    value={newKeyName}
+                                    onChange={e => setNewKeyName(e.target.value)}
+                                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1"
+                                />
+                                <button onClick={handleCreateKey} className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium inline-flex items-center gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    Создать
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-card rounded-lg border p-4 shadow-sm mb-6">
+                        <h3 className="text-lg font-semibold mb-4">Как использовать</h3>
+                        <pre className="bg-secondary p-4 rounded-md text-sm overflow-x-auto text-secondary-foreground font-mono">
+{`// Пример запроса к вашему приватному AI мозгу
+const fetch = require('node-fetch');
+
+async function askFunAi() {
+  const res = await fetch('https://[ВАШ_САЙТ]/api/funai/public/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer [ВАШ_АПИ_КЛЮЧ_ЗДЕСЬ]'
+    },
+    body: JSON.stringify({
+      message: 'Запрос к нейросети',
+      context: 'my_app_context' // опционально
+    })
+  });
+  const data = await res.json();
+  console.log(data); // { answer: "...", level: "L2 AI", tokensUsed: 123 }
+}
+`}
+                        </pre>
+                    </div>
+
+                    <h3 className="text-lg font-semibold mb-4">Ваши ключи</h3>
+                    <div className="space-y-3">
+                        {apiKeys.length === 0 ? (
+                            <div className="text-muted-foreground p-8 text-center border border-dashed rounded-lg">Вы еще не создали ни одного API ключа</div>
+                        ) : (
+                            apiKeys.map(key => (
+                                <div key={key.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-card border rounded-lg shadow-sm gap-4">
+                                    <div>
+                                        <div className="font-medium text-foreground mb-1">{key.name}</div>
+                                        <div className="text-xs text-muted-foreground">Создан: {new Date(key.created_at * 1000).toLocaleString('ru-RU')}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <code className="px-2 py-1 bg-secondary rounded text-sm text-secondary-foreground font-mono break-all sm:break-normal">
+                                            {key.api_key}
+                                        </code>
+                                        <button 
+                                            onClick={() => { navigator.clipboard.writeText(key.api_key); alert('Ключ скопирован!'); }}
+                                            className="px-3 py-1.5 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 focus:outline-none transition-colors"
+                                        >
+                                            Копировать
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteKey(key.id)}
+                                            className="p-1.5 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                                            title="Удалить ключ"
+                                        >
+                                            <Trash2 className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
                         )}
                     </div>
                 </motion.div>
