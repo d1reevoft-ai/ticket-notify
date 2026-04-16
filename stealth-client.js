@@ -214,6 +214,19 @@ async function launchBrowser() {
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
 
+    // --- Enhanced Logging: Capture browser console ---
+    page.on('console', msg => {
+        const text = msg.text();
+        if (text.includes('localStorage error')) return; // ignore common noise
+        log(`[BROWSER] ${text}`, 'DEBUG');
+    });
+    page.on('pageerror', err => log(`[BROWSER ERROR] ${err.toString()}`, 'ERROR'));
+    page.on('requestfailed', req => {
+        if (req.url().includes('discord.com/api')) {
+            log(`[BROWSER NET] Failed: ${req.url()} (${req.failure().errorText})`, 'WARNING');
+        }
+    });
+
     // Inject Gateway WebSocket interceptor BEFORE any page scripts run
     await page.evaluateOnNewDocument((token) => {
         // Store token for login
@@ -278,25 +291,29 @@ async function launchBrowser() {
     });
 
     await page.exposeFunction('__onGatewayStatus', (status) => {
-        log(`📡 Gateway WebSocket: ${status}`);
+        log(`📡 Gateway WebSocket: ${status}`, 'GATEWAY');
         if (status.startsWith('closed')) {
             gatewayIntercepted = false;
         }
     });
 
     // Navigate to Discord and inject token
-    log('🔐 Logging into Discord Web...');
-    await page.goto('https://discord.com/login', { waitUntil: 'domcontentloaded' });
+    log('🔐 Logging into Discord Web...', 'AUTH');
+    await page.goto('https://discord.com/login', { waitUntil: 'networkidle2' });
 
-    // Set token in localStorage
-    await page.evaluate((token) => {
-        localStorage.setItem('token', JSON.stringify(token));
+    // Set token in localStorage properly
+    await page.evaluate((t) => {
+        try {
+            window.localStorage.setItem('token', `"${t}"`);
+        } catch (e) {
+            console.error('Localstorage error:', e.message);
+        }
     }, DISCORD_TOKEN);
 
     // Reload to trigger login with token
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.reload({ waitUntil: 'networkidle2' });
 
-    log('⏳ Waiting for Discord to load...');
+    log('⏳ Waiting for Discord to load...', 'AUTH');
 
     // Wait for Discord app to fully load
     try {
@@ -305,6 +322,13 @@ async function launchBrowser() {
     } catch {
         log('⚠️ Discord Web load timeout — may still work');
     }
+
+    // --- Periodic Health Status ---
+    setInterval(() => {
+        const rStatus = (railwayWs && railwayWs.readyState === WebSocket.OPEN) ? '🟢' : '🔴';
+        const dStatus = gatewayIntercepted ? '🟢' : '🟡';
+        log(`💓 Railway=${rStatus} Discord=${dStatus} Puppeteer=🟢`, 'HEALTH');
+    }, 60_000);
 
     // Keep-alive: prevent browser from sleeping
     setInterval(async () => {
