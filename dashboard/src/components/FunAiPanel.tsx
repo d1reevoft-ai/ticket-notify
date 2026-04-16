@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, Trash2, Sparkles } from 'lucide-react';
+import { X, Send, Trash2, Sparkles, MessageSquare, ChevronDown, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import FunAiMessage from './FunAiMessage';
 import type { ChatMessage } from '../hooks/useFunAi';
-import type { FunAiSuggestion } from '../api/funai';
+import type { FunAiSuggestion, FunAiSession } from '../api/funai';
 
 interface FunAiPanelProps {
     isOpen: boolean;
@@ -12,6 +12,10 @@ interface FunAiPanelProps {
     messages: ChatMessage[];
     isThinking: boolean;
     suggestions: FunAiSuggestion[];
+    chatSessions: FunAiSession[];
+    activeSessionId: string;
+    newSession: () => void;
+    switchSession: (id: string) => void;
     onSend: (text: string) => void;
     onClear: () => void;
 }
@@ -22,10 +26,15 @@ export default function FunAiPanel({
     messages,
     isThinking,
     suggestions,
+    chatSessions,
+    activeSessionId,
+    newSession,
+    switchSession,
     onSend,
     onClear,
 }: FunAiPanelProps) {
     const [input, setInput] = useState('');
+    const [showSessions, setShowSessions] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const navigate = useNavigate();
@@ -80,11 +89,17 @@ export default function FunAiPanel({
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     >
                         {/* Header */}
-                        <div className="funai-panel__header">
-                            <div className="funai-panel__title">
-                                <span className="funai-panel__logo">🧠</span>
+                        <div className="funai-panel__header relative z-20">
+                            <div 
+                                className="funai-panel__title cursor-pointer select-none group"
+                                onClick={() => setShowSessions(prev => !prev)}
+                            >
+                                <span className="funai-panel__logo group-hover:scale-110 transition-transform">🧠</span>
                                 <div>
-                                    <h3>FunAI</h3>
+                                    <h3 className="flex items-center gap-1.5 transition-colors group-hover:text-white">
+                                        FunAI 
+                                        <ChevronDown className={`w-3.5 h-3.5 text-white/50 transition-transform duration-300 ${showSessions ? 'rotate-180' : ''}`} />
+                                    </h3>
                                     <span className="funai-panel__status">
                                         <span className="funai-panel__status-dot" />
                                         Активен
@@ -107,6 +122,57 @@ export default function FunAiPanel({
                                     <X className="w-4 h-4" />
                                 </button>
                             </div>
+
+                            {/* Sessions Dropdown */}
+                            <AnimatePresence>
+                                {showSessions && (
+                                    <>
+                                        <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="fixed inset-0 z-10"
+                                            onClick={() => setShowSessions(false)}
+                                        />
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="absolute top-[60px] left-4 w-[280px] z-30 funai-panel__sessions-dropdown"
+                                        >
+                                            <div className="flex justify-between items-center mb-2 px-1">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-white/40">История чатов</span>
+                                                <button 
+                                                    onClick={() => { newSession(); setShowSessions(false); }} 
+                                                    className="flex items-center gap-1.5 text-[11px] font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md transition-all"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" /> Новый
+                                                </button>
+                                            </div>
+                                            <div className="max-h-[260px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 pr-1">
+                                                {chatSessions.length === 0 && (
+                                                    <div className="text-center text-white/40 text-xs py-5">Нет истории чатов</div>
+                                                )}
+                                                {chatSessions.map(session => (
+                                                    <button
+                                                        key={session.id}
+                                                        onClick={() => { switchSession(session.id); setShowSessions(false); }}
+                                                        className={`text-left px-3 py-2.5 rounded-lg text-sm truncate transition-all flex items-center gap-2.5 group
+                                                            ${session.id === activeSessionId 
+                                                                ? 'bg-purple-500/20 text-purple-200 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]' 
+                                                                : 'text-white/70 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10'
+                                                            }`}
+                                                    >
+                                                        <MessageSquare className={`w-4 h-4 shrink-0 transition-colors ${session.id === activeSessionId ? 'text-purple-400' : 'text-white/40 group-hover:text-white/60'}`} />
+                                                        <span className="truncate">{session.title}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
                         </div>
 
                         {/* Messages */}

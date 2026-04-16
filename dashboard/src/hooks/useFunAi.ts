@@ -1,6 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { funaiApi, type FunAiChatResponse, type FunAiInsight, type FunAiSuggestion } from '../api/funai';
+import { funaiApi, type FunAiChatResponse, type FunAiInsight, type FunAiSuggestion, type FunAiSession } from '../api/funai';
+
+// simple quick uuid
+function generateId() {
+    return Math.random().toString(36).substring(2, 15);
+}
 
 export interface ChatMessage {
     id: string;
@@ -22,14 +27,39 @@ export function useFunAi() {
     const [insights, setInsights] = useState<FunAiInsight[]>([]);
     const [insightCount, setInsightCount] = useState(0);
     const [suggestions, setSuggestions] = useState<FunAiSuggestion[]>([]);
-    const loadedRef = useRef(false);
+    const [chatSessions, setChatSessions] = useState<FunAiSession[]>([]);
+    const [activeSessionId, setActiveSessionId] = useState<string>('default');
+    
+    // We use a ref so we only load a specific session ID once per switch
+    const loadedSessionRef = useRef<string | null>(null);
     const insightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Load conversation history on first open
+    // Load sessions on open
+    const loadSessions = useCallback(async () => {
+        try {
+            const data = await funaiApi.getSessions();
+            if (data.sessions) {
+                setChatSessions(data.sessions);
+                // If we don't have an active session, or it's default, pick the latest one
+                if (data.sessions.length > 0 && activeSessionId === 'default' && loadedSessionRef.current === null) {
+                    setActiveSessionId(data.sessions[0].id);
+                }
+            }
+        } catch (e) {}
+    }, [activeSessionId]);
+
     useEffect(() => {
-        if (isPanelOpen && !loadedRef.current) {
-            loadedRef.current = true;
-            funaiApi.getConversations(50).then(data => {
+        if (isPanelOpen) {
+            loadSessions();
+        }
+    }, [isPanelOpen, loadSessions]);
+
+    // Load conversation history when activeSession changes
+    useEffect(() => {
+        if (isPanelOpen && loadedSessionRef.current !== activeSessionId) {
+            loadedSessionRef.current = activeSessionId;
+            setMessages([]); // clear current view
+            funaiApi.getConversations(50, activeSessionId).then(data => {
                 if (data.conversations && data.conversations.length > 0) {
                     setMessages(data.conversations.map((msg, i) => ({
                         id: `hist-${i}`,
@@ -40,7 +70,7 @@ export function useFunAi() {
                 }
             }).catch(() => {});
         }
-    }, [isPanelOpen]);
+    }, [isPanelOpen, activeSessionId]);
 
     // Fetch suggestions when page changes
     useEffect(() => {
@@ -77,7 +107,7 @@ export function useFunAi() {
         setIsThinking(true);
 
         try {
-            const response: FunAiChatResponse = await funaiApi.chat(text.trim(), location.pathname);
+            const response: FunAiChatResponse = await funaiApi.chat(text.trim(), location.pathname, activeSessionId);
             const aiMsg: ChatMessage = {
                 id: `ai-${Date.now()}`,
                 role: 'assistant',
@@ -101,15 +131,30 @@ export function useFunAi() {
             setMessages(prev => [...prev, errorMsg]);
         } finally {
             setIsThinking(false);
+            loadSessions(); // refresh history topics list if new chat started
         }
-    }, [isThinking, location.pathname]);
+    }, [isThinking, location.pathname, activeSessionId, loadSessions]);
 
     const clearHistory = useCallback(async () => {
         try {
-            await funaiApi.clearConversations();
+            await funaiApi.clearConversations(activeSessionId);
             setMessages([]);
+            loadSessions();
         } catch {}
+    }, [activeSessionId, loadSessions]);
+
+    const newSession = useCallback(() => {
+        const id = generateId();
+        setActiveSessionId(id);
+        setMessages([]);
+        loadedSessionRef.current = id;
     }, []);
+
+    const switchSession = useCallback((id: string) => {
+        if (id !== activeSessionId) {
+            setActiveSessionId(id);
+        }
+    }, [activeSessionId]);
 
     const togglePanel = useCallback(() => {
         setIsPanelOpen(prev => !prev);
@@ -125,6 +170,10 @@ export function useFunAi() {
         insights,
         insightCount,
         suggestions,
+        chatSessions,
+        activeSessionId,
+        newSession,
+        switchSession,
         clearHistory,
         isPanelOpen,
         togglePanel,

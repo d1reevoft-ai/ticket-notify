@@ -20,7 +20,7 @@ function createFunAiRoutes(db, botManager) {
     router.post('/chat', authenticateToken, async (req, res) => {
         const funai = getFunAI(req, res);
         if (!funai) return;
-        const { message, currentPage } = req.body;
+        const { message, currentPage, sessionId } = req.body;
         if (!message) return res.status(400).json({ error: 'message required' });
 
         try {
@@ -28,6 +28,7 @@ function createFunAiRoutes(db, botManager) {
                 mode: 'widget',
                 currentPage: currentPage || '',
                 userId: req.user.userId,
+                sessionId: sessionId || 'default'
             });
             res.json(result);
         } catch (err) {
@@ -40,15 +41,29 @@ function createFunAiRoutes(db, botManager) {
         const funai = getFunAI(req, res);
         if (!funai) return;
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-        const conversations = funai.memory.getConversations(req.user.userId, limit);
+        const sessionId = req.query.sessionId || 'default';
+        const conversations = funai.memory.getConversations(req.user.userId, limit, sessionId);
         res.json({ conversations });
     });
 
     router.delete('/conversations', authenticateToken, (req, res) => {
         const funai = getFunAI(req, res);
         if (!funai) return;
-        funai.memory.clearConversations(req.user.userId);
+        const sessionId = req.query.sessionId;
+        funai.memory.clearConversations(req.user.userId, sessionId);
         res.json({ ok: true });
+    });
+
+    // ── Sessions ──────────────────────────────────────────────
+    router.get('/sessions', authenticateToken, (req, res) => {
+        const funai = getFunAI(req, res);
+        if (!funai) return;
+        try {
+            const sessions = funai.memory.getChatSessions(req.user.userId);
+            res.json({ sessions });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 
     // ── Memory ────────────────────────────────────────────────

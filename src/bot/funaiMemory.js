@@ -42,10 +42,19 @@ class FunAIMemory {
                 content TEXT NOT NULL,
                 actions TEXT,
                 context_page TEXT,
+                session_id TEXT DEFAULT 'default',
                 created_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_funai_conv_user ON funai_conversations(user_id);
+            CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id);
         `);
+
+        try {
+            this.db.exec("ALTER TABLE funai_conversations ADD COLUMN session_id TEXT DEFAULT 'default'");
+            this.db.exec("CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id)");
+        } catch (e) {
+            // column already exists
+        }
 
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS funai_actions_log (
@@ -188,20 +197,20 @@ class FunAIMemory {
     /** Full-text search in memory */
     search(query, limit = 10) {
         if (!query) return [];
-        
+
         // Russian stop words
-        const stopWords = new Set(['я','ты','он','она','оно','мы','вы','они','что','кто','как','какие','какая','какой','где','когда','зачем','почему','для','на','в','с','к','от','до','из','у','о','об','и','а','но','да','нет','это','тот','эта','те','то']);
-        
+        const stopWords = new Set(['я', 'ты', 'он', 'она', 'оно', 'мы', 'вы', 'они', 'что', 'кто', 'как', 'какие', 'какая', 'какой', 'где', 'когда', 'зачем', 'почему', 'для', 'на', 'в', 'с', 'к', 'от', 'до', 'из', 'у', 'о', 'об', 'и', 'а', 'но', 'да', 'нет', 'это', 'тот', 'эта', 'те', 'то']);
+
         const rawTokens = String(query).toLowerCase().replace(/[^\w\sа-яё]/gi, '').split(/\s+/);
         // Deduplicate tokens and filter noise
         const tokens = [...new Set(rawTokens)].filter(t => t.length > 2 && !stopWords.has(t));
-        
+
         if (tokens.length === 0) return [];
 
         // Advanced SQL Query for Match Count Scoring
         const conditions = tokens.map(() => '(LOWER(content) LIKE ? OR LOWER(question) LIKE ?)');
         const matchCalculations = tokens.map((_, i) => `(CASE WHEN LOWER(content) LIKE ? OR LOWER(question) LIKE ? THEN 1 ELSE 0 END)`);
-        
+
         const params = [];
         for (const token of tokens) {
             params.push(`%${token}%`, `%${token}%`);
@@ -210,7 +219,7 @@ class FunAIMemory {
         // Params for the WHERE OR clause
         const matchParams = [];
         for (const token of tokens) {
-            matchParams.push(`%${token}%`, `%${token}%`); 
+            matchParams.push(`%${token}%`, `%${token}%`);
         }
 
         const sql = `
@@ -271,33 +280,63 @@ class FunAIMemory {
     // ── Conversation History ────────────────────────────────
 
     /** Save a conversation message */
-    saveConversation(userId, role, content, actions = null, contextPage = '') {
+    saveConversation(userId, role, content, actions = null, contextPage = '', sessionId = 'default') {
         this.db.prepare(`
-            INSERT INTO funai_conversations (user_id, role, content, actions, context_page, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(userId, role, content, actions ? JSON.stringify(actions) : null, contextPage, Date.now());
+            INSERT INTO funai_conversations (user_id, role, content, actions, context_page, session_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(userId, role, content, actions ? JSON.stringify(actions) : null, contextPage, sessionId, Date.now());
     }
 
     /** Get conversation history */
-    getConversations(userId = null, limit = 50) {
+    getConversations(userId = null, limit = 50, sessionId = 'default') {
         if (userId) {
             const rows = this.db.prepare(
-                'SELECT * FROM funai_conversations WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
-            ).all(userId, limit);
+                'SELECT * FROM funai_conversations WHERE user_id = ? AND session_id = ? ORDER BY created_at DESC LIMIT ?'
+            ).all(userId, sessionId, limit);
             return rows.reverse();
         }
         return this.db.prepare(
-            'SELECT * FROM funai_conversations ORDER BY created_at DESC LIMIT ?'
-        ).all(limit);
+            'SELECT * FROM funai_conversations WHERE session_id = ? ORDER BY created_at DESC LIMIT ?'
+        ).all(sessionId, limit);
     }
 
     /** Clear conversation history */
-    clearConversations(userId = null) {
-        if (userId) {
+    clearConversations(userId = null, sessionId = null) {
+        if (userId && sessionId) {
+            this.db.prepare('DELETE FROM funai_conversations WHERE user_id = ? AND session_id = ?').run(userId, sessionId);
+        } else if (userId) {
             this.db.prepare('DELETE FROM funai_conversations WHERE user_id = ?').run(userId);
         } else {
             this.db.prepare('DELETE FROM funai_conversations').run();
         }
+    }
+
+    /** Get user chat sessions */
+    getChatSessions(userId) {
+        // Find distinct sessions with their latest message
+        const sessions = this.db.prepare(`
+            SELECT session_id as id, 
+                   MAX(created_at) as updated_at,
+                   (SELECT content FROM funai_conversations f2 
+                    WHERE f2.session_id = f1.session_id AND f2.user_id = ? AND f2.role = 'user' 
+                    ORDER BY created_at ASC LIMIT 1) as title
+            FROM funai_conversations f1
+            WHERE user_id = ?
+            GROUP BY session_id
+            ORDER BY updated_at DESC
+            LIMIT 30
+        `).all(userId, userId);
+
+        return sessions.map(s => {
+            let title = s.title || 'Новый чат';
+            // Trim title
+            if (title.length > 40) title = title.substring(0, 40) + '...';
+            return {
+                id: s.id,
+                title,
+                updatedAt: s.updated_at
+            };
+        });
     }
 
     // ── Actions Log ─────────────────────────────────────────
@@ -373,8 +412,8 @@ class FunAIMemory {
                 l2Hits: today.l2_hits || 0,
                 corrections: today.corrections || 0,
                 tokensUsed: today.tokens_used || 0,
-                accuracy: today.total_requests > 0 
-                    ? Math.round(((today.total_requests - today.corrections) / today.total_requests) * 100) 
+                accuracy: today.total_requests > 0
+                    ? Math.round(((today.total_requests - today.corrections) / today.total_requests) * 100)
                     : 100,
             },
             totals: {
