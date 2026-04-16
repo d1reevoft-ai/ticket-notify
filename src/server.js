@@ -23,6 +23,7 @@ const { initDb } = require('./dbManager');
 const BotManager = require('./BotManager');
 const { createAuthRoutes, authenticateToken, JWT_SECRET, sendTelegramMessage } = require('./api/auth');
 const { createProfileRoutes } = require('./api/profile');
+const { EdgeTTS } = require('node-edge-tts');
 const { createAdminRoutes } = require('./api/admin');
 const { createFaqRoutes } = require('./api/faq');
 const { createFunAiRoutes } = require('./api/funai');
@@ -596,6 +597,41 @@ async function main() {
         bot.updateSettings(req.body);
         bot.saveConfigToDb();
         res.json({ ok: true });
+    });
+
+    // ── TTS Engine ───────────────────────────────────────
+    let edgeTtsInstance = null;
+    app.post('/api/tts', authenticateToken, async (req, res) => {
+        try {
+            const text = String(req.body?.text || '').trim().substring(0, 500); // 500 chars limit
+            if (!text) return res.status(400).json({ error: 'Text required' });
+            
+            if (!edgeTtsInstance) {
+                edgeTtsInstance = new EdgeTTS({
+                    voice: 'ru-RU-SvetlanaNeural', // Premium realistic Russian female voice
+                    lang: 'ru-RU',
+                    outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
+                });
+            }
+
+            const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/[*_~`]/g, '');
+            
+            // Get streaming chunks
+            const rawAudioStream = await edgeTtsInstance.ttsPromise(cleanText);
+            
+            // Collect chunks into a buffer
+            const chunks = [];
+            for await (const chunk of rawAudioStream) {
+                chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+            
+            res.set('Content-Type', 'audio/mpeg');
+            res.send(buffer);
+        } catch (err) {
+            console.error('[TTS] Error:', err);
+            res.status(500).json({ error: 'Speech Synthesis Failed' });
+        }
     });
 
     // ── Prompt Editor ────────────────────────────────────
