@@ -28,7 +28,7 @@ const DISCORD_TOKEN = config.discordToken || process.env.DISCORD_TOKEN || '';
 const RAILWAY_URL = config.railwayUrl || process.env.RAILWAY_URL || '';
 const RELAY_SECRET = config.relaySecret || process.env.RELAY_SECRET || 'stealth-relay-secret-2026';
 const CHROME_PATH = config.chromePath || process.env.CHROME_PATH || '/usr/bin/chromium-browser';
-const USE_PUPPETEER = config.usePuppeteer !== false; // Default true
+const USE_PUPPETEER = false; // Highly stable Node.js direct routing (solves ZLIB crash)
 
 if (!DISCORD_TOKEN) { console.error('❌ DISCORD_TOKEN не задан'); process.exit(1); }
 if (!RAILWAY_URL) { console.error('❌ RAILWAY_URL не задан'); process.exit(1); }
