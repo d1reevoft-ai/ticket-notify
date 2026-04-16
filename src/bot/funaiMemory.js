@@ -281,9 +281,10 @@ class FunAIMemory {
     /** Get conversation history */
     getConversations(userId = null, limit = 50) {
         if (userId) {
-            return this.db.prepare(
-                'SELECT * FROM funai_conversations WHERE user_id = ? ORDER BY created_at ASC LIMIT ?'
+            const rows = this.db.prepare(
+                'SELECT * FROM funai_conversations WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
             ).all(userId, limit);
+            return rows.reverse();
         }
         return this.db.prepare(
             'SELECT * FROM funai_conversations ORDER BY created_at DESC LIMIT ?'
