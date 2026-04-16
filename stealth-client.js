@@ -254,11 +254,13 @@ async function launchBrowser() {
         // Force token into localStorage before Discord's security disables it
         try { window.localStorage.setItem('token', `"${token}"`); } catch { }
 
-        // Store copy just in case
-        window.__DISCORD_TOKEN = token;
-
         const OrigWebSocket = window.WebSocket;
         window.WebSocket = function (url, protocols) {
+            // Drop zlib-stream compression so we can read plain JSON in event.data
+            if (url && url.includes('gateway.discord.gg')) {
+                url = url.replace('&compress=zlib-stream', '').replace('compress=zlib-stream', '');
+            }
+
             const ws = protocols
                 ? new OrigWebSocket(url, protocols)
                 : new OrigWebSocket(url);
