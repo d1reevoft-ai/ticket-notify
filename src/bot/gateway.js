@@ -2014,6 +2014,30 @@ function handleDispatch(bot, event, d) {
                                 const channelHistory = convLogger ? convLogger.getChannelHistory(d.channel_id, 10) : [];
 
                                 // Build OpenAI-compatible messages array for Groq
+                                // NEW: L0 Short-circuit
+                                if (bot._funAI) {
+                                    try {
+                                        const searchNorm = question.toLowerCase().trim();
+                                        const memoryHits = await bot._funAI.memory.search(searchNorm, 3);
+                                        if (memoryHits.length > 0) {
+                                            const bestHit = memoryHits[0];
+                                            const isExact = (bestHit.question || '').toLowerCase().trim() === searchNorm;
+                                            if (isExact && bestHit.confidence >= 0.7) {
+                                                bot.log(`🎯 Ping L0 HIT: Skipping LLM (Websocket)...`);
+                                                
+                                                // Send response exactly
+                                                const sentRes = await sendDiscordMessageSmart(bot, d.channel_id, bestHit.content, d.id, d.guild_id);
+                                                if (sentRes.ok) {
+                                                    bot.log(`✅ L0 Ping response sent to #${d.channel_id}`);
+                                                    rememberNeuroMessageId(bot, sentRes);
+                                                    enqueueNeuroTelegramNotification(bot, { channelId: d.channel_id, authorUsername: author.username || author.global_name || author.id, question, answer: bestHit.content });
+                                                }
+                                                return; // Stop processing further!
+                                            }
+                                        }
+                                    } catch(e) { bot.log(`Memory L0 check error: ${e.message}`); }
+                                }
+
                                 const messages = [{ role: 'system', content: systemPrompt }];
                                 const ragContext = buildRagContextMessage({
                                     query: question,
@@ -2025,6 +2049,20 @@ function handleDispatch(bot, event, d) {
                                 if (ragContext.message) {
                                     messages.push({ role: 'system', content: ragContext.message });
                                     bot.log(`📚 RAG context attached: ${ragContext.snippetCount} snippets`);
+                                }
+                                
+                                // Inject FunAI Memory!
+                                if (bot._funAI) {
+                                    try {
+                                        const memoryHits = await bot._funAI.memory.search(question, 3);
+                                        if (memoryHits.length > 0) {
+                                            const memoryText = memoryHits.map(h => `Вопрос пользователя: ${h.question || 'Факт'}\nПравильный ответ: ${h.content}`).join('\n---\n');
+                                            messages.push({ 
+                                                role: 'system', 
+                                                content: `[ОБЯЗАТЕЛЬНАЯ ИНСТРУКЦИЯ ПО ПАМЯТИ]\nНиже приведены реальные ответы администрации на похожие вопросы в прошлом. Прими их во внимание при ответе!\n\n${memoryText}` 
+                                            });
+                                        }
+                                    } catch(e) {}
                                 }
 
                                 appendHistoryMessages(bot, messages, channelHistory);
@@ -2735,6 +2773,30 @@ function startAutoReplyPolling(bot) {
                                     try {
                                         const systemPrompt = loadSystemPrompt();
                                         const channelHistory = bot._convLogger ? bot._convLogger.getChannelHistory(channelId, 10) : [];
+                                        // NEW: L0 Short-circuit
+                                        if (bot._funAI) {
+                                            try {
+                                                const searchNorm = question.toLowerCase().trim();
+                                                const memoryHits = await bot._funAI.memory.search(searchNorm, 3);
+                                                if (memoryHits.length > 0) {
+                                                    const bestHit = memoryHits[0];
+                                                    const isExact = (bestHit.question || '').toLowerCase().trim() === searchNorm;
+                                                    if (isExact && bestHit.confidence >= 0.7) {
+                                                        bot.log(`🎯 Ping L0 HIT: Skipping LLM (Poll)...`);
+                                                        
+                                                        // Send response exactly
+                                                        const sentRes = await sendDiscordMessageSmart(bot, channelId, bestHit.content, msg.id, msg.guild_id);
+                                                        if (sentRes.ok) {
+                                                            bot.log(`✅ L0 Poll response sent to #${channelId}`);
+                                                            rememberNeuroMessageId(bot, sentRes);
+                                                            enqueueNeuroTelegramNotification(bot, { channelId, authorUsername: msg.author.username || msg.author.global_name || msg.author.id, question, answer: bestHit.content });
+                                                        }
+                                                        return; // Stop processing further!
+                                                    }
+                                                }
+                                            } catch(e) { bot.log(`Memory L0 check error: ${e.message}`); }
+                                        }
+
                                         const messages = [{ role: 'system', content: systemPrompt }];
                                         const ragContext = buildRagContextMessage({
                                             query: question,
@@ -2746,6 +2808,20 @@ function startAutoReplyPolling(bot) {
                                         if (ragContext.message) {
                                             messages.push({ role: 'system', content: ragContext.message });
                                             bot.log(`📚 Poll RAG context attached: ${ragContext.snippetCount} snippets`);
+                                        }
+                                        
+                                        // Inject FunAI Memory!
+                                        if (bot._funAI) {
+                                            try {
+                                                const memoryHits = await bot._funAI.memory.search(question, 3);
+                                                if (memoryHits.length > 0) {
+                                                    const memoryText = memoryHits.map(h => `Вопрос пользователя: ${h.question || 'Факт'}\nПравильный ответ: ${h.content}`).join('\n---\n');
+                                                    messages.push({ 
+                                                        role: 'system', 
+                                                        content: `[ОБЯЗАТЕЛЬНАЯ ИНСТРУКЦИЯ ПО ПАМЯТИ]\nНиже приведены реальные ответы администрации на похожие вопросы в прошлом. Прими их во внимание при ответе!\n\n${memoryText}` 
+                                                    });
+                                                }
+                                            } catch(e) {}
                                         }
                                         appendHistoryMessages(bot, messages, channelHistory);
                                         if (prevBotReply && !channelHistory.some(e => e.type === 'ai_question' && (e.question || e.answer || '').includes(prevBotReply.slice(0, 50)))) {
@@ -2896,25 +2972,9 @@ async function draftTicketReply(bot, channelId, messages) {
 
     // --- Pull FAQ articles from the database as knowledge base context ---
     let faqContext = '';
-    try {
-        const articles = bot.db.prepare('SELECT title, content FROM faq_articles ORDER BY created_at DESC LIMIT 10').all();
-        if (articles.length > 0) {
-            const faqText = articles.map(a => {
-                const title = a.title.startsWith('/') ? `[Макрос для ответа: ${a.title.substring(1)}]` : `### ${a.title}`;
-                // Strip slash-commands from macro content so AI never leaks them
-                let content = a.content;
-                if (a.title.startsWith('/')) {
-                    content = content.replace(/^\/.+$/gm, (line) => {
-                        const colonIdx = line.indexOf(':');
-                        if (colonIdx !== -1 && colonIdx < line.length - 1) return line.substring(colonIdx + 1).trim();
-                        return '';
-                    }).replace(/\n{3,}/g, '\n\n').trim();
-                }
-                return `${title}\n${content}`;
-            }).join('\n\n');
-            faqContext = `\n\n[БАЗА ЗНАНИЙ (Макросы)]\n${faqText.substring(0, 3000)}`;
-        }
-    } catch (_e) { /* table might not exist yet */ }
+    // We NO LONGER blindly pull the last 10 FAQ articles! 
+    // Dumping random macros confused the AI and caused it to spit out irrelevant answers like 'try vanilla minecraft'.
+    // If we need RAG for FAQ, it should be done semantically via bot._funAI.memory.search.
 
     // --- Pull context from FunAI Memory ---
     const recentMsgs = messages.slice(-20);
