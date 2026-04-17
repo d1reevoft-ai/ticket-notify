@@ -68,7 +68,9 @@ export default function Topbar({ membersVisible = true, onToggleMembers }: Topba
     const socket = useSocket();
 
     // ── Browser Notifications ─────────────────────────────────
-    const [notifEnabled, setNotifEnabled] = useState(Notification.permission === 'granted');
+    const [notifEnabled, setNotifEnabled] = useState(() => {
+        return typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
+    });
     const [unreadCount, setUnreadCount] = useState(0);
     const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('soundEnabled') !== 'false');
     const soundEnabledRef = useRef(soundEnabled);
@@ -115,7 +117,7 @@ export default function Topbar({ membersVisible = true, onToggleMembers }: Topba
             setNotifications(prev => [newNotif, ...prev].slice(0, 50)); // Keep last 50
 
             if (soundEnabledRef.current) playNotificationSound('ticket');
-            if (document.hidden && Notification.permission === 'granted') {
+            if (document.hidden && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
                 const n = new Notification('🎫 Новый тикет', {
                     body: `#${data.channelName || 'ticket'} от ${data.openerUsername || 'пользователя'}`,
                     icon: '/favicon.ico',
