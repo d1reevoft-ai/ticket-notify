@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const FunAIMemory = require('./funaiMemory');
+const { EmbeddingProvider } = require('./embeddingProvider');
 const { buildRagContextMessage, sanitizeResponseLinks } = require('./ragEngine');
 const { evaluateAutoReplyDecision } = require('./autoReplyEngine');
 const funtimeServerRules = require('./funtimeServerRules');
@@ -217,7 +218,38 @@ class FunAI {
         this.dataDir = bot?.dataDir || _dataDir;
         this.memory = new FunAIMemory(db, this.dataDir);
         this._initialized = true;
-        console.log(`${LOG} ✅ FunAI Core initialized.`);
+
+        // Initialize Embedding Provider for semantic search
+        this._initEmbeddings();
+
+        // Run confidence decay on startup (daily)
+        try { this.memory.decayUnusedMemories(); } catch (e) {
+            console.error(`${LOG} ⚠️ Decay error: ${e.message}`);
+        }
+
+        console.log(`${LOG} ✅ FunAI Core initialized (with semantic search).`);
+    }
+
+    /** Initialize embedding provider from available Gemini API keys */
+    _initEmbeddings() {
+        try {
+            const cfg = this.bot?.config || {};
+            const creds = getAiCredentials(cfg);
+            const geminiKeys = creds.filter(c => c.provider === 'gemini').map(c => c.key);
+
+            if (geminiKeys.length === 0) {
+                console.log(`${LOG} ⚠️ No Gemini keys for embeddings — using TF-IDF fallback only`);
+            }
+
+            const embedder = new EmbeddingProvider({
+                geminiApiKeys: geminiKeys,
+                log: (...args) => console.log(`${LOG}`, ...args),
+            });
+
+            this.memory.setEmbeddingProvider(embedder);
+        } catch (e) {
+            console.error(`${LOG} ❌ EmbeddingProvider init error: ${e.message}`);
+        }
     }
 
     // ═══ Main Entry Point ════════════════════════════════════
@@ -232,6 +264,14 @@ class FunAI {
         const startTime = Date.now();
 
         try {
+            // Track question frequency for pattern detection
+            this.memory.trackQuestionFrequency(question);
+
+            // Touch user profile
+            if (context.userId) {
+                this.memory.touchUserProfile(context.userId, context.username || null);
+            }
+
             // Intent Router: L0 → L1 → L2
             const result = await this._routeIntent(question, context);
 
@@ -245,6 +285,11 @@ class FunAI {
 
             // Track stats
             this.memory.trackRequest(result.level, result.tokensUsed || 0);
+
+            // Boost confidence if L0 hit was used successfully
+            if (result.level === 'l0' && result._memoryId) {
+                this.memory.boostConfidence(result._memoryId, 0.05);
+            }
 
             // Save to conversation (widget mode)
             if (mode === 'widget' && context.userId) {
@@ -334,7 +379,7 @@ class FunAI {
         const forgetMatch = normalized.match(/^(забудь|забудь про|forget:?)\s+(.+)/i);
         if (forgetMatch) {
             const query = forgetMatch[2].trim();
-            const found = this.memory.search(query, 5);
+            const found = await this.memory.search(query, 5);
             if (found.length > 0) {
                 for (const item of found) this.memory.delete(item.id);
                 return { answer: `🗑️ Удалил ${found.length} записей, связанных с "${query}"`, level: 'l0', source: 'command' };
@@ -348,18 +393,26 @@ class FunAI {
             if (widgetResult) return widgetResult;
         }
 
-        // L0: Exact match from memory (instant, 0 tokens)
-        const memoryHits = this.memory.search(normalized, 3);
+        // L0: Hybrid search from memory (keyword + semantic, 0 tokens)
+        const memoryHits = await this.memory.search(normalized, 5);
         if (memoryHits.length > 0) {
             const bestHit = memoryHits[0];
+            // Check if semantic score is very high (>0.85) — direct answer
+            const semanticScore = bestHit._semanticScore || 0;
+
             if (bestHit.type === 'qa' && bestHit.question && bestHit.confidence >= 0.8) {
                 const qNorm = String(bestHit.question).toLowerCase().trim();
-                if (qNorm === normalized || normalized.includes(qNorm) || qNorm.includes(normalized)) {
-                    return { answer: bestHit.content, level: 'l0', source: `memory:${bestHit.id}` };
+                const isExactMatch = qNorm === normalized || normalized.includes(qNorm) || qNorm.includes(normalized);
+                const isSemanticMatch = semanticScore >= 0.85;
+
+                if (isExactMatch || isSemanticMatch) {
+                    const matchType = isSemanticMatch && !isExactMatch ? 'semantic' : 'exact';
+                    console.log(`${LOG} 🎯 L0 hit [${matchType}]: id=${bestHit.id}, confidence=${bestHit.confidence}, semantic=${semanticScore.toFixed(2)}`);
+                    return { answer: bestHit.content, level: 'l0', source: `memory:${bestHit.id}`, _memoryId: bestHit.id };
                 }
             }
             if (bestHit.type === 'correction') {
-                return { answer: bestHit.content, level: 'l0', source: `correction:${bestHit.id}` };
+                return { answer: bestHit.content, level: 'l0', source: `correction:${bestHit.id}`, _memoryId: bestHit.id };
             }
         }
 
@@ -910,7 +963,7 @@ class FunAI {
 
     remember(fact, source = 'widget') { return this.memory.remember(fact, source); }
     forget(factId) { return this.memory.delete(factId); }
-    searchMemory(query) { return this.memory.search(query); }
+    async searchMemory(query) { return this.memory.search(query); }
     getMemoryStats() { return this.memory.getMemoryStats(); }
 
     learnFromCorrection(original, corrected) {
@@ -920,6 +973,11 @@ class FunAI {
 
     learnFromConversation(question, answer) {
         this.memory.learnQA(question, answer, 'conversation');
+    }
+
+    /** Get repeating questions that should become FAQ */
+    getRepeatingQuestions() {
+        return this.memory.getRepeatingQuestions(3, 48);
     }
 
     // ═══ Insights & Suggestions ══════════════════════════════
@@ -947,6 +1005,36 @@ class FunAI {
                 }
             }
         }
+
+        // Check for repeating questions → suggest FAQ creation
+        try {
+            const repeating = this.memory.getRepeatingQuestions(3, 48);
+            for (const q of repeating) {
+                insights.push({
+                    type: 'suggestion',
+                    title: 'Повторяющийся вопрос',
+                    text: `"${q.question_text}" — задан ${q.count} раз. Рекомендую создать FAQ-статью.`,
+                    icon: '💡',
+                    questionId: q.id,
+                });
+            }
+        } catch { /* table might not exist yet */ }
+
+        // Embedding health
+        try {
+            const memStats = this.memory.getMemoryStats();
+            if (memStats.embeddingsCount < memStats.total && memStats.total > 0) {
+                const pct = Math.round((memStats.embeddingsCount / memStats.total) * 100);
+                if (pct < 80) {
+                    insights.push({
+                        type: 'info',
+                        title: 'Семантический поиск',
+                        text: `Embeddings: ${memStats.embeddingsCount}/${memStats.total} (${pct}%). Семантический поиск работает не на полную мощность.`,
+                        icon: '🧬',
+                    });
+                }
+            }
+        } catch { }
 
         return insights;
     }
