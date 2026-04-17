@@ -2919,6 +2919,8 @@ async function draftTicketReply(bot, channelId, messages) {
     // --- Pull context from FunAI Memory ---
     const recentMsgs = messages.slice(-20);
     const lastUserMsg = [...recentMsgs].reverse().find(m => !m.author?.bot) || recentMsgs[recentMsgs.length - 1];
+    
+    // SHORT-CIRCUIT: If we find a perfect match in memory, just return it without LLM!
     if (lastUserMsg && bot._funAI) {
         try {
             let lastText = lastUserMsg.content || '';
@@ -2926,8 +2928,25 @@ async function draftTicketReply(bot, channelId, messages) {
                 lastText = lastUserMsg.embeds.map(e => e.description || e.title).join(' ');
             }
             if (lastText) {
-                const memoryHits = await bot._funAI.memory.search(lastText, 3);
+                const searchNorm = lastText.toLowerCase().trim();
+                const memoryHits = await bot._funAI.memory.search(searchNorm, 3);
+                
                 if (memoryHits.length > 0) {
+                    const bestHit = memoryHits[0];
+                    const semanticScore = bestHit._semanticScore || 0;
+                    const keywordScore = bestHit._keywordRank || 99;
+                    
+                    const qNorm = String(bestHit.question || '').toLowerCase().trim();
+                    const isExactMatch = qNorm && (qNorm === searchNorm || searchNorm.includes(qNorm) || qNorm.includes(searchNorm));
+                    const isSemanticMatch = semanticScore >= 0.75;
+                    const isStrongKeyword = keywordScore <= 2 && (bestHit.match_count || 0) >= 2;
+                    
+                    if ((isExactMatch || isSemanticMatch || isStrongKeyword) && bestHit.confidence >= 0.7) {
+                        bot.log(`🎯 Draft L0 HIT: Skipping LLM, using memory ID=${bestHit.id}`);
+                        return bestHit.content; // Return EXACT text!
+                    }
+                    
+                    // Otherwise, provide as context
                     const memoryText = memoryHits.map(h => `Вопрос пользователя: ${h.question || 'Факт'}\nПравильный ответ: ${h.content}`).join('\n---\n');
                     faqContext += `\n\n[ОБЯЗАТЕЛЬНАЯ ИНСТРУКЦИЯ ПО ПАМЯТИ]\nНиже приведены реальные ответы администрации на похожие вопросы в прошлом. Ты ОБЯЗАН использовать их как ИСТИНУ в последней инстанции.\n\n${memoryText}`;
                 }
