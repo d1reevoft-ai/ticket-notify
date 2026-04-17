@@ -770,6 +770,23 @@ class FunAI {
         contextInfo += `- Запросов сегодня: ${today.totalRequests}\n`;
         contextInfo += `- Записей в памяти: ${stats.totals.memoryEntries}\n`;
 
+        // 👤 User Profile Injection
+        if (context.userId) {
+            const profile = this.memory.getUserProfile(context.userId);
+            if (profile && profile.interaction_count > 0) {
+                contextInfo += `\n[ДОСЬЕ СОБЕСЕДНИКА]\n`;
+                contextInfo += `- Имя: ${profile.username || 'Неизвестно'}\n`;
+                contextInfo += `- Взаимодействий: ${profile.interaction_count}\n`;
+                if (profile.summary) contextInfo += `- Характеристика: ${profile.summary}\n`;
+                if (profile.facts && profile.facts !== '[]') {
+                    try {
+                        const facts = JSON.parse(profile.facts);
+                        if (facts.length > 0) contextInfo += `- Факты: ${facts.join(', ')}\n`;
+                    } catch (e) {}
+                }
+            }
+        }
+
         if (activeCount > 0) {
             contextInfo += `\n[СПИСОК ОТКРЫТЫХ ТИКЕТОВ]\n`;
             let tCount = 0;

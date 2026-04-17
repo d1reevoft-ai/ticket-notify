@@ -162,12 +162,24 @@ function learnManualAnswer(bot, { channelId, question, answer, authorUsername })
         authorUsername,
     });
 
-    if (safeQuestion) {
-        const saved = saveLearning(bot, { type: 'qa', question: safeQuestion, answer: safeAnswer });
-        if (saved) bot.log(`📝 Learned Q&A: "${safeQuestion.slice(0, 40)}" → "${safeAnswer.slice(0, 40)}"`);
-    } else if (safeAnswer.length > 5) {
-        const saved = saveLearning(bot, { type: 'fact', content: safeAnswer });
-        if (saved) bot.log(`📝 Learned fact: "${safeAnswer.slice(0, 50)}"`);
+    // Delegate learning to FunAI Semantic Memory
+    if (bot._funAI) {
+        if (safeQuestion) {
+            bot._funAI.learnFromConversation(safeQuestion, safeAnswer);
+            bot.log(`🧠 FunAI learned Q&A from manual reply: "${safeQuestion.slice(0, 40)}"`);
+        } else if (safeAnswer.length > 5) {
+            bot._funAI.remember(safeAnswer, 'conversation');
+            bot.log(`🧠 FunAI learned fact from manual reply: "${safeAnswer.slice(0, 50)}"`);
+        }
+    } else {
+        // Fallback to legacy file-based learning
+        if (safeQuestion) {
+            const saved = saveLearning(bot, { type: 'qa', question: safeQuestion, answer: safeAnswer });
+            if (saved) bot.log(`📝 Learned Q&A (legacy): "${safeQuestion.slice(0, 40)}" → "${safeAnswer.slice(0, 40)}"`);
+        } else if (safeAnswer.length > 5) {
+            const saved = saveLearning(bot, { type: 'fact', content: safeAnswer });
+            if (saved) bot.log(`📝 Learned fact (legacy): "${safeAnswer.slice(0, 50)}"`);
+        }
     }
 }
 
