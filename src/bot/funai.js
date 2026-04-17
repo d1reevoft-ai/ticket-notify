@@ -404,16 +404,21 @@ class FunAI {
         const memoryHits = await this.memory.search(normalized, 5);
         if (memoryHits.length > 0) {
             const bestHit = memoryHits[0];
-            // Check if semantic score is very high (>0.85) — direct answer
             const semanticScore = bestHit._semanticScore || 0;
+            const keywordScore = bestHit._keywordRank || 99;
 
-            if (bestHit.type === 'qa' && bestHit.question && bestHit.confidence >= 0.8) {
+            // Debug: log what memory found
+            console.log(`${LOG} 🔍 Memory search found ${memoryHits.length} hits. Best: id=${bestHit.id}, type=${bestHit.type}, semantic=${semanticScore.toFixed(2)}, kwRank=${keywordScore}, q="${(bestHit.question || '').substring(0, 40)}"`);
+
+            if (bestHit.type === 'qa' && bestHit.question && bestHit.confidence >= 0.7) {
                 const qNorm = String(bestHit.question).toLowerCase().trim();
                 const isExactMatch = qNorm === normalized || normalized.includes(qNorm) || qNorm.includes(normalized);
-                const isSemanticMatch = semanticScore >= 0.85;
+                const isSemanticMatch = semanticScore >= 0.75;
+                // NEW: keyword-only match — if top keyword rank is 1 and at least 2 tokens matched
+                const isStrongKeyword = keywordScore <= 2 && (bestHit.match_count || 0) >= 2;
 
-                if (isExactMatch || isSemanticMatch) {
-                    const matchType = isSemanticMatch && !isExactMatch ? 'semantic' : 'exact';
+                if (isExactMatch || isSemanticMatch || isStrongKeyword) {
+                    const matchType = isSemanticMatch ? 'semantic' : isExactMatch ? 'exact' : 'keyword';
                     console.log(`${LOG} 🎯 L0 hit [${matchType}]: id=${bestHit.id}, confidence=${bestHit.confidence}, semantic=${semanticScore.toFixed(2)}`);
                     return { answer: bestHit.content, level: 'l0', source: `memory:${bestHit.id}`, _memoryId: bestHit.id };
                 }
@@ -580,12 +585,16 @@ class FunAI {
             topK: 6,
         });
 
-        // Build memory context
+        // Build memory context — FORCE the LLM to use it
         let memoryContext = '';
         if (memoryHits.length > 0) {
-            memoryContext = '\n\nИЗ ПАМЯТИ FUNAI:\n' + memoryHits.map((h, i) =>
-                `${i + 1}. [${h.type}] ${h.question ? `Q: ${h.question} A: ` : ''}${h.content}`
-            ).join('\n');
+            memoryContext = '\n\n═══ ОБЯЗАТЕЛЬНЫЙ КОНТЕКСТ ИЗ ПАМЯТИ ═══\n' +
+                'ВАЖНО: Ниже приведены РЕАЛЬНЫЕ ответы из базы знаний. Ты ОБЯЗАН использовать эту информацию при ответе. НЕ ПРИДУМЫВАЙ свой ответ, если ниже есть подходящий!\n\n' +
+                memoryHits.map((h, i) =>
+                    `${i + 1}. ${h.question ? `Вопрос: "${h.question}"\nОтвет: "${h.content}"` : `Факт: "${h.content}"`}`
+                ).join('\n\n') +
+                '\n═══════════════════════════════════════\n' +
+                'Используй информацию выше для ответа. Отвечай кратко и по делу, как модератор.';
         }
 
         // FAQ context
