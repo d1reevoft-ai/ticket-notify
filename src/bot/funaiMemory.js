@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 //  FunAI Memory Manager — SQLite-based persistent memory
+//  With Semantic Search (Embeddings) + Confidence Decay
 // ═══════════════════════════════════════════════════════════════
 const fs = require('fs');
 const path = require('path');
+const { cosineSimilarity, vectorToBlob, blobToVector } = require('./embeddingProvider');
 
 const LOG = '[FunAI Memory]';
 
@@ -10,8 +12,24 @@ class FunAIMemory {
     constructor(db, dataDir) {
         this.db = db;
         this.dataDir = dataDir || '';
+        /** @type {import('./embeddingProvider').EmbeddingProvider|null} */
+        this._embedder = null;
+        this._embedQueue = [];     // async embed queue
+        this._embedRunning = false;
         this._initTables();
         this._migrateFromJson();
+    }
+
+    /**
+     * Attach an EmbeddingProvider instance.
+     * Call this after constructing FunAIMemory once the provider is ready.
+     * @param {import('./embeddingProvider').EmbeddingProvider} provider
+     */
+    setEmbeddingProvider(provider) {
+        this._embedder = provider;
+        console.log(`${LOG} ✅ Embedding provider attached (dimension: ${provider.dimension})`);
+        // Backfill embeddings for entries that don't have one yet
+        this._backfillEmbeddings();
     }
 
     // ── Table Creation ──────────────────────────────────────
@@ -34,6 +52,31 @@ class FunAIMemory {
             CREATE INDEX IF NOT EXISTS idx_funai_memory_category ON funai_memory(category);
         `);
 
+        // ── Embeddings table for semantic search ─────────────
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS funai_embeddings (
+                memory_id INTEGER PRIMARY KEY,
+                embedding BLOB NOT NULL,
+                model TEXT DEFAULT 'unknown',
+                dimension INTEGER DEFAULT 768,
+                created_at INTEGER NOT NULL
+            );
+        `);
+
+        // ── User profiles for personalization ────────────────
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS funai_user_profiles (
+                user_id TEXT PRIMARY KEY,
+                username TEXT,
+                summary TEXT DEFAULT '',
+                preferences TEXT DEFAULT '{}',
+                facts TEXT DEFAULT '[]',
+                last_interaction INTEGER,
+                interaction_count INTEGER DEFAULT 0,
+                updated_at INTEGER
+            );
+        `);
+
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS funai_conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,8 +97,29 @@ class FunAIMemory {
             // column already exists
         }
 
+        // Add summary column for conversation summarization
+        try {
+            this.db.exec("ALTER TABLE funai_conversations ADD COLUMN summary TEXT DEFAULT ''");
+        } catch (e) {
+            // column already exists
+        }
+
         // Now safely create index because we are sure session_id exists
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_funai_conv_session ON funai_conversations(session_id)");
+
+        // ── Question frequency tracking for pattern detection ─
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS funai_question_freq (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_hash TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                count INTEGER DEFAULT 1,
+                first_seen INTEGER NOT NULL,
+                last_seen INTEGER NOT NULL,
+                faq_suggested INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_funai_qf_hash ON funai_question_freq(question_hash);
+        `);
 
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS funai_actions_log (
@@ -82,7 +146,7 @@ class FunAIMemory {
             );
         `);
 
-        console.log(`${LOG} ✅ SQLite tables initialized.`);
+        console.log(`${LOG} ✅ SQLite tables initialized (with embeddings, profiles, freq tracking).`);
     }
 
     // ── Migration from learned_knowledge.json ───────────────
@@ -130,7 +194,7 @@ class FunAIMemory {
 
     // ── CRUD Operations ─────────────────────────────────────
 
-    /** Add a memory entry */
+    /** Add a memory entry — auto-generates embedding asynchronously */
     add({ type = 'fact', category = '', question = null, content, source = 'admin', confidence = 1.0, expiresAt = null }) {
         if (!content) return null;
         const now = Date.now();
@@ -138,7 +202,14 @@ class FunAIMemory {
             INSERT INTO funai_memory (type, category, question, content, source, confidence, created_at, updated_at, expires_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(type, category, question, content, source, confidence, now, now, expiresAt);
-        return result.lastInsertRowid;
+
+        const id = result.lastInsertRowid;
+
+        // Queue async embedding generation
+        const textForEmbed = question ? `${question} ${content}` : content;
+        this._queueEmbed(Number(id), textForEmbed);
+
+        return id;
     }
 
     /** Update a memory entry */
@@ -195,29 +266,26 @@ class FunAIMemory {
         return this.db.prepare(sql).all(...params);
     }
 
-    /** Full-text search in memory */
-    search(query, limit = 10) {
+    /** Full-text search in memory (keyword LIKE) */
+    _keywordSearch(query, limit = 10) {
         if (!query) return [];
 
         // Russian stop words
         const stopWords = new Set(['я', 'ты', 'он', 'она', 'оно', 'мы', 'вы', 'они', 'что', 'кто', 'как', 'какие', 'какая', 'какой', 'где', 'когда', 'зачем', 'почему', 'для', 'на', 'в', 'с', 'к', 'от', 'до', 'из', 'у', 'о', 'об', 'и', 'а', 'но', 'да', 'нет', 'это', 'тот', 'эта', 'те', 'то']);
 
         const rawTokens = String(query).toLowerCase().replace(/[^\w\sа-яё]/gi, '').split(/\s+/);
-        // Deduplicate tokens and filter noise
         const tokens = [...new Set(rawTokens)].filter(t => t.length > 2 && !stopWords.has(t));
 
         if (tokens.length === 0) return [];
 
-        // Advanced SQL Query for Match Count Scoring
         const conditions = tokens.map(() => '(LOWER(content) LIKE ? OR LOWER(question) LIKE ?)');
-        const matchCalculations = tokens.map((_, i) => `(CASE WHEN LOWER(content) LIKE ? OR LOWER(question) LIKE ? THEN 1 ELSE 0 END)`);
+        const matchCalculations = tokens.map(() => `(CASE WHEN LOWER(content) LIKE ? OR LOWER(question) LIKE ? THEN 1 ELSE 0 END)`);
 
         const params = [];
         for (const token of tokens) {
             params.push(`%${token}%`, `%${token}%`);
         }
 
-        // Params for the WHERE OR clause
         const matchParams = [];
         for (const token of tokens) {
             matchParams.push(`%${token}%`, `%${token}%`);
@@ -236,18 +304,132 @@ class FunAIMemory {
             LIMIT ?
         `;
 
-        // We pass the params twice: first for the calculation CASE block, second for the WHERE OR block
-        const results = this.db.prepare(sql).all(...params, Date.now(), ...matchParams, limit);
+        return this.db.prepare(sql).all(...params, Date.now(), ...matchParams, limit);
+    }
 
-        // Filter out very weak matches (optional, but good for reducing hallucinations)
-        const relevantResults = results; // results.filter(r => r.match_count >= Math.min(tokens.length, 2));
+    /** Semantic search using embeddings (cosine similarity) */
+    async semanticSearch(query, limit = 10, minScore = 0.35) {
+        if (!query || !this._embedder) return [];
 
-        if (relevantResults.length > 0) {
-            const ids = relevantResults.map(r => r.id);
-            this.db.prepare(`UPDATE funai_memory SET usage_count = usage_count + 1 WHERE id IN (${ids.join(',')})`).run();
+        try {
+            // Get query embedding
+            const { vector: queryVec } = await this._embedder.embed(query);
+            if (!queryVec || queryVec.length === 0) return [];
+
+            // Load all embeddings from DB
+            const rows = this.db.prepare(`
+                SELECT e.memory_id, e.embedding, m.*
+                FROM funai_embeddings e
+                JOIN funai_memory m ON m.id = e.memory_id
+                WHERE m.expires_at IS NULL OR m.expires_at > ?
+            `).all(Date.now());
+
+            if (rows.length === 0) return [];
+
+            // Score each by cosine similarity
+            const scored = [];
+            for (const row of rows) {
+                const vec = blobToVector(row.embedding);
+                if (!vec) continue;
+                const similarity = cosineSimilarity(queryVec, vec);
+                if (similarity >= minScore) {
+                    scored.push({ ...row, semantic_score: similarity, embedding: undefined });
+                }
+            }
+
+            scored.sort((a, b) => b.semantic_score - a.semantic_score);
+            return scored.slice(0, limit);
+        } catch (e) {
+            console.error(`${LOG} ❌ Semantic search error: ${e.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Hybrid search — combines keyword (LIKE) + semantic (embeddings).
+     * Uses Reciprocal Rank Fusion (RRF) to merge both result lists.
+     * Falls back to keyword-only if embeddings aren't available.
+     */
+    async search(query, limit = 10) {
+        if (!query) return [];
+
+        // Get keyword results (always available)
+        const keywordResults = this._keywordSearch(query, limit * 2);
+
+        // Try semantic search if embedder is attached
+        let semanticResults = [];
+        if (this._embedder) {
+            try {
+                semanticResults = await this.semanticSearch(query, limit * 2, 0.30);
+            } catch (e) {
+                console.error(`${LOG} ⚠️ Semantic search fallback to keyword-only: ${e.message}`);
+            }
         }
 
-        return relevantResults;
+        // If no semantic results — return keyword results as before
+        if (semanticResults.length === 0) {
+            if (keywordResults.length > 0) {
+                const ids = keywordResults.map(r => r.id);
+                this.db.prepare(`UPDATE funai_memory SET usage_count = usage_count + 1 WHERE id IN (${ids.join(',')})`).run();
+            }
+            return keywordResults.slice(0, limit);
+        }
+
+        // ── Reciprocal Rank Fusion (RRF) ──
+        const k = 60; // RRF constant
+        const fusedScores = new Map(); // id -> { score, entry }
+        const alpha = 0.4; // keyword weight (semantic gets 0.6)
+
+        for (let i = 0; i < keywordResults.length; i++) {
+            const entry = keywordResults[i];
+            const rrfScore = alpha / (k + i + 1);
+            fusedScores.set(entry.id, {
+                score: rrfScore,
+                entry,
+                keywordRank: i + 1,
+                semanticRank: null,
+                semanticScore: 0,
+            });
+        }
+
+        for (let i = 0; i < semanticResults.length; i++) {
+            const entry = semanticResults[i];
+            const rrfScore = (1 - alpha) / (k + i + 1);
+            if (fusedScores.has(entry.id)) {
+                const existing = fusedScores.get(entry.id);
+                existing.score += rrfScore;
+                existing.semanticRank = i + 1;
+                existing.semanticScore = entry.semantic_score || 0;
+            } else {
+                fusedScores.set(entry.id, {
+                    score: rrfScore,
+                    entry,
+                    keywordRank: null,
+                    semanticRank: i + 1,
+                    semanticScore: entry.semantic_score || 0,
+                });
+            }
+        }
+
+        // Sort by fused score
+        const fused = [...fusedScores.values()]
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+
+        // Update usage counts
+        const resultIds = fused.map(f => f.entry.id);
+        if (resultIds.length > 0) {
+            this.db.prepare(`UPDATE funai_memory SET usage_count = usage_count + 1 WHERE id IN (${resultIds.join(',')})`).run();
+        }
+
+        // Return entries with fused metadata
+        return fused.map(f => ({
+            ...f.entry,
+            _fusedScore: f.score,
+            _keywordRank: f.keywordRank,
+            _semanticRank: f.semanticRank,
+            _semanticScore: f.semanticScore,
+        }));
     }
 
     /** Remember a fact from a conversation */
@@ -445,14 +627,246 @@ class FunAIMemory {
             'SELECT source, COUNT(*) as cnt FROM funai_memory GROUP BY source'
         ).all();
         const total = this.db.prepare('SELECT COUNT(*) as cnt FROM funai_memory').get()?.cnt || 0;
+        const embeddingsCount = this.db.prepare('SELECT COUNT(*) as cnt FROM funai_embeddings').get()?.cnt || 0;
+        const profilesCount = this.db.prepare('SELECT COUNT(*) as cnt FROM funai_user_profiles').get()?.cnt || 0;
 
         return {
             total,
+            embeddingsCount,
+            profilesCount,
             byType: Object.fromEntries(byType.map(r => [r.type, r.cnt])),
             byCategory: Object.fromEntries(byCategory.map(r => [r.category || 'uncategorized', r.cnt])),
             bySource: Object.fromEntries(bySource.map(r => [r.source || 'unknown', r.cnt])),
         };
     }
+
+    // ═══ Embedding Queue (async, non-blocking) ═══════════════
+
+    /** Queue an embedding generation — runs async in background */
+    _queueEmbed(memoryId, text) {
+        if (!this._embedder) return;
+        this._embedQueue.push({ memoryId, text });
+        this._processEmbedQueue();
+    }
+
+    async _processEmbedQueue() {
+        if (this._embedRunning || this._embedQueue.length === 0) return;
+        this._embedRunning = true;
+
+        try {
+            while (this._embedQueue.length > 0) {
+                const batch = this._embedQueue.splice(0, 10); // process up to 10 at a time
+                const texts = batch.map(b => b.text);
+
+                try {
+                    const results = await this._embedder.embedBatch(texts);
+                    const now = Date.now();
+                    const stmt = this.db.prepare(`
+                        INSERT OR REPLACE INTO funai_embeddings (memory_id, embedding, model, dimension, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    `);
+
+                    for (let i = 0; i < batch.length; i++) {
+                        const blob = vectorToBlob(results[i].vector);
+                        if (blob) {
+                            stmt.run(batch[i].memoryId, blob, results[i].model, results[i].dimension, now);
+                        }
+                    }
+                    console.log(`${LOG} 🧬 Embedded ${batch.length} entries (model: ${results[0]?.model || 'unknown'})`);
+                } catch (e) {
+                    console.error(`${LOG} ⚠️ Embed batch error: ${e.message}`);
+                }
+
+                // Gentle delay between batches
+                if (this._embedQueue.length > 0) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+        } finally {
+            this._embedRunning = false;
+        }
+    }
+
+    /** Backfill embeddings for memory entries that don't have one */
+    async _backfillEmbeddings() {
+        if (!this._embedder) return;
+
+        const missing = this.db.prepare(`
+            SELECT m.id, m.question, m.content 
+            FROM funai_memory m
+            LEFT JOIN funai_embeddings e ON e.memory_id = m.id
+            WHERE e.memory_id IS NULL
+            ORDER BY m.created_at DESC
+            LIMIT 500
+        `).all();
+
+        if (missing.length === 0) {
+            console.log(`${LOG} ✅ All memory entries have embeddings.`);
+            return;
+        }
+
+        console.log(`${LOG} 🔄 Backfilling ${missing.length} missing embeddings...`);
+
+        for (const entry of missing) {
+            const text = entry.question ? `${entry.question} ${entry.content}` : entry.content;
+            this._queueEmbed(entry.id, text);
+        }
+    }
+
+    // ═══ Confidence Decay System ═════════════════════════════
+
+    /**
+     * Run daily confidence decay.
+     * - Unused entries (30+ days): confidence -= 0.1
+     * - Archive entries with confidence < 0.3
+     * Call this once on bot startup.
+     */
+    decayUnusedMemories() {
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+        // Decay unused entries
+        const decayed = this.db.prepare(`
+            UPDATE funai_memory 
+            SET confidence = MAX(0.1, confidence - 0.1),
+                updated_at = ?
+            WHERE updated_at < ? 
+              AND usage_count = 0
+              AND source != 'admin'
+              AND confidence > 0.3
+        `).run(now, thirtyDaysAgo);
+
+        // Archive very low confidence entries
+        const archived = this.db.prepare(`
+            UPDATE funai_memory 
+            SET category = 'archived',
+                updated_at = ?
+            WHERE confidence < 0.3 
+              AND category != 'archived'
+              AND source != 'admin'
+        `).run(now);
+
+        if (decayed.changes > 0 || archived.changes > 0) {
+            console.log(`${LOG} 🔄 Decay: ${decayed.changes} entries decayed, ${archived.changes} archived`);
+        }
+    }
+
+    /** Boost confidence after successful usage (user didn't correct) */
+    boostConfidence(id, amount = 0.05) {
+        this.db.prepare(`
+            UPDATE funai_memory 
+            SET confidence = MIN(2.0, confidence + ?),
+                updated_at = ?
+            WHERE id = ?
+        `).run(amount, Date.now(), id);
+    }
+
+    // ═══ User Profiles ══════════════════════════════════════
+
+    /** Get or create a user profile */
+    getUserProfile(userId) {
+        if (!userId) return null;
+        let profile = this.db.prepare('SELECT * FROM funai_user_profiles WHERE user_id = ?').get(String(userId));
+        if (!profile) {
+            const now = Date.now();
+            this.db.prepare(`
+                INSERT INTO funai_user_profiles (user_id, last_interaction, updated_at)
+                VALUES (?, ?, ?)
+            `).run(String(userId), now, now);
+            profile = this.db.prepare('SELECT * FROM funai_user_profiles WHERE user_id = ?').get(String(userId));
+        }
+        return profile;
+    }
+
+    /** Update user profile after an interaction */
+    touchUserProfile(userId, username = null) {
+        if (!userId) return;
+        const now = Date.now();
+        const existing = this.db.prepare('SELECT * FROM funai_user_profiles WHERE user_id = ?').get(String(userId));
+        if (existing) {
+            this.db.prepare(`
+                UPDATE funai_user_profiles 
+                SET interaction_count = interaction_count + 1,
+                    last_interaction = ?,
+                    username = COALESCE(?, username),
+                    updated_at = ?
+                WHERE user_id = ?
+            `).run(now, username, now, String(userId));
+        } else {
+            this.db.prepare(`
+                INSERT INTO funai_user_profiles (user_id, username, last_interaction, interaction_count, updated_at)
+                VALUES (?, ?, ?, 1, ?)
+            `).run(String(userId), username, now, now);
+        }
+    }
+
+    /** Update user profile summary */
+    updateUserSummary(userId, summary) {
+        this.db.prepare(`
+            UPDATE funai_user_profiles SET summary = ?, updated_at = ? WHERE user_id = ?
+        `).run(summary, Date.now(), String(userId));
+    }
+
+    /** Add a fact to a user profile */
+    addUserFact(userId, fact) {
+        const profile = this.getUserProfile(userId);
+        if (!profile) return;
+        try {
+            const facts = JSON.parse(profile.facts || '[]');
+            if (!facts.includes(fact)) {
+                facts.push(fact);
+                if (facts.length > 20) facts.shift(); // keep max 20 facts
+                this.db.prepare('UPDATE funai_user_profiles SET facts = ?, updated_at = ? WHERE user_id = ?')
+                    .run(JSON.stringify(facts), Date.now(), String(userId));
+            }
+        } catch { /* ignore parse errors */ }
+    }
+
+    // ═══ Question Frequency Tracking ════════════════════════
+
+    /** Track a question for pattern detection */
+    trackQuestionFrequency(question) {
+        if (!question || question.length < 5) return;
+        const hash = _simpleHash(question.toLowerCase().trim());
+        const now = Date.now();
+
+        const existing = this.db.prepare('SELECT * FROM funai_question_freq WHERE question_hash = ?').get(hash);
+        if (existing) {
+            this.db.prepare(`
+                UPDATE funai_question_freq SET count = count + 1, last_seen = ? WHERE id = ?
+            `).run(now, existing.id);
+        } else {
+            this.db.prepare(`
+                INSERT INTO funai_question_freq (question_hash, question_text, first_seen, last_seen)
+                VALUES (?, ?, ?, ?)
+            `).run(hash, question.trim().slice(0, 200), now, now);
+        }
+    }
+
+    /** Get frequently asked questions (asked 3+ times in last 24h) */
+    getRepeatingQuestions(minCount = 3, hoursWindow = 24) {
+        const since = Date.now() - (hoursWindow * 60 * 60 * 1000);
+        return this.db.prepare(`
+            SELECT * FROM funai_question_freq 
+            WHERE count >= ? AND last_seen > ? AND faq_suggested = 0
+            ORDER BY count DESC
+            LIMIT 10
+        `).all(minCount, since);
+    }
+
+    /** Mark a repeating question as "FAQ suggested" */
+    markFaqSuggested(id) {
+        this.db.prepare('UPDATE funai_question_freq SET faq_suggested = 1 WHERE id = ?').run(id);
+    }
+}
+
+function _simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return String(hash >>> 0);
 }
 
 module.exports = FunAIMemory;
