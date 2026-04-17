@@ -2912,13 +2912,33 @@ async function draftTicketReply(bot, channelId, messages) {
                 }
                 return `${title}\n${content}`;
             }).join('\n\n');
-            faqContext = `\n\n[БАЗА ЗНАНИЙ — используй только ТЕКСТ макросов для ответа, никогда не сообщай пользователю названия команд-макросов (начинающихся со слэша), так как это твои внутренние бинды]\n${faqText.substring(0, 6000)}`;
+            faqContext = `\n\n[БАЗА ЗНАНИЙ (Макросы)]\n${faqText.substring(0, 3000)}`;
         }
     } catch (_e) { /* table might not exist yet */ }
 
-    const systemPrompt = `Ты — AI-помощник (саппорт) для приватного сервера. Твоя задача — составить грамотный, вежливый и полезный ответ на последний вопрос пользователя в тикете. Опирайся на историю сообщений и базу знаний (если она предоставлена). Отвечай кратко, от 1 до 3 предложений. Не используй приветствия, так как этот текст будет вставлен в текстовое поле модератора для отправки.${faqContext}`;
-
+    // --- Pull context from FunAI Memory ---
     const recentMsgs = messages.slice(-20);
+    const lastUserMsg = [...recentMsgs].reverse().find(m => !m.author?.bot) || recentMsgs[recentMsgs.length - 1];
+    if (lastUserMsg && bot._funAI) {
+        try {
+            let lastText = lastUserMsg.content || '';
+            if (!lastText && lastUserMsg.embeds) {
+                lastText = lastUserMsg.embeds.map(e => e.description || e.title).join(' ');
+            }
+            if (lastText) {
+                const memoryHits = await bot._funAI.memory.search(lastText, 3);
+                if (memoryHits.length > 0) {
+                    const memoryText = memoryHits.map(h => `Вопрос пользователя: ${h.question || 'Факт'}\nПравильный ответ: ${h.content}`).join('\n---\n');
+                    faqContext += `\n\n[ОБЯЗАТЕЛЬНАЯ ИНСТРУКЦИЯ ПО ПАМЯТИ]\nНиже приведены реальные ответы администрации на похожие вопросы в прошлом. Ты ОБЯЗАН использовать их как ИСТИНУ в последней инстанции.\n\n${memoryText}`;
+                }
+            }
+        } catch(e) { bot.log(`Memory search error in ticket draft: ${e.message}`); }
+    }
+
+    const systemPrompt = `Ты — член администрации и саппорт (модератор) на приватном Minecraft сервере. Твоя задача — составить грамотный, короткий, профессиональный и человечный ответ на последний вопрос пользователя в тикете. 
+Опирайся на историю сообщений и ОБЯЗАТЕЛЬНО используй секцию [ОБЯЗАТЕЛЬНАЯ ИНСТРУКЦИЯ ПО ПАМЯТИ]. Твоя задача не придумать ответ самому, а выдать ответ администратора из памяти!
+Отвечай строго по делу, от 1 до 3 предложений. Не используй приветствия, обращайся сразу к сути, так как этот текст будет вставлен в текстовое поле для отправки.${faqContext}`;
+
     const formatted = [{ role: 'system', content: systemPrompt }];
 
     for (const msg of recentMsgs) {
