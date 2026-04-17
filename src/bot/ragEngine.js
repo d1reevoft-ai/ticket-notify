@@ -192,30 +192,6 @@ function buildDocs(dataDir, config) {
         }));
     }
 
-    const knowledgePath = path.join(dataDir, 'learned_knowledge.json');
-    const knowledge = safeReadJson(knowledgePath);
-    if (Array.isArray(knowledge)) {
-        for (const item of knowledge) {
-            if (!item || typeof item !== 'object') continue;
-            if (item.type === 'qa' && item.question && item.answer) {
-                docs.push(createDoc({
-                    source: 'knowledge:qa',
-                    text: `Вопрос: ${item.question} Ответ: ${item.answer}`,
-                    weight: 1,
-                    hints: [item.question],
-                }));
-                continue;
-            }
-            if (item.type === 'fact' && item.content) {
-                docs.push(createDoc({
-                    source: 'knowledge:fact',
-                    text: item.content,
-                    weight: 0.9,
-                }));
-            }
-        }
-    }
-
     return docs;
 }
 

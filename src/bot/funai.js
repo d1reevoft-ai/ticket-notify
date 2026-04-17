@@ -291,11 +291,14 @@ class FunAI {
                 this.memory.boostConfidence(result._memoryId, 0.05);
             }
 
-            // Save to conversation (widget mode)
+            // Save to conversation & Summarize (widget mode)
             if (mode === 'widget' && context.userId) {
                 const sessionId = context.sessionId || 'default';
                 this.memory.saveConversation(context.userId, 'user', question, null, context.currentPage || '', sessionId);
                 this.memory.saveConversation(context.userId, 'assistant', result.answer, result.actions || null, context.currentPage || '', sessionId);
+                
+                // Background summary check to save tokens
+                this._checkConversationSummary(context.userId, sessionId).catch(e => console.error(`${LOG} Summary error:`, e.message));
             }
 
             return {
@@ -599,10 +602,10 @@ class FunAI {
             { role: 'system', content: systemPrompt + (ragResult.message ? '\n\n' + ragResult.message : '') + memoryContext + faqContext }
         ];
 
-        // Add conversation history for widget mode
+        // Add conversation history for widget mode (limit strictly to save tokens, rest is summarized)
         if (mode === 'widget' && context.userId) {
             const sessionId = context.sessionId || 'default';
-            const history = this.memory.getConversations(context.userId, 20, sessionId);
+            const history = this.memory.getConversations(context.userId, 8, sessionId);
             for (const msg of history) {
                 messages.push({ role: msg.role, content: msg.content });
             }
@@ -657,6 +660,42 @@ class FunAI {
         }
 
         return answer;
+    }
+
+    // ═══ Background Processes ════════════════════════════════
+
+    async _checkConversationSummary(userId, sessionId) {
+        // If history exceeds 12 messages, summarize the oldest ones to free up tokens
+        const history = this.memory.getConversations(userId, 20, sessionId);
+        if (history.length <= 12) return;
+
+        // Take oldest 10 messages to summarize
+        const toSummarize = history.slice(0, 10);
+        if (toSummarize.length < 5) return;
+
+        console.log(`${LOG} 📝 Summarizing ${toSummarize.length} old messages for ${userId}...`);
+
+        const prompt = `Проанализируй диалог пользователя с ИИ. 
+Выдели 1-2 главных факта о пользователе или его текущей проблеме, которые могут быть полезны в будущем. 
+Никакой воды, только список фактов. Если ничего важного нет, ответь "null".
+ДИАЛОГ:
+${toSummarize.map(m => `${m.role}: ${m.content.slice(0, 200)}`).join('\n')}
+`;
+
+        const result = await this._requestAI([{ role: 'system', content: prompt }], { maxTokens: 150 });
+        if (result.ok && result.answerText && result.answerText !== 'null') {
+            const newFacts = result.answerText.split('\n').filter(Boolean);
+            for (const fact of newFacts) {
+                const cleanFact = fact.replace(/^[-*•]\s*/, '').slice(0, 150).trim();
+                if (cleanFact) this.memory.addUserFact(userId, cleanFact);
+            }
+            console.log(`${LOG} 📝 Added ${newFacts.length} user facts from conversation summary.`);
+        }
+
+        // Delete the summarized messages to save DB space and tokens
+        for (const msg of toSummarize) {
+            this.db.prepare('DELETE FROM funai_conversations WHERE id = ?').run(msg.id);
+        }
     }
 
     // ═══ AI Provider Logic ═══════════════════════════════════
