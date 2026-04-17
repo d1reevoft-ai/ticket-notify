@@ -83,9 +83,9 @@ export default function TicketDetail() {
     // Alt+W global listener for binds modal
     useEffect(() => {
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
-            // e.code === 'KeyW' работает независимо от раскладки (Alt+W и Alt+Ц)
-            if (e.altKey && e.code === 'KeyW') {
-                e.preventDefault();
+            // e.code === 'KeyW' работает независимо от раскладки
+            if ((e.altKey || e.ctrlKey || e.metaKey) && e.code === 'KeyW') {
+                e.preventDefault(); 
                 e.stopPropagation();
                 setShowBindsModal(prev => {
                     if (!prev) {
