@@ -273,6 +273,44 @@ function createFunAiRoutes(db, botManager) {
         }
     });
 
+    // ── Bulk Memory Import ─────────────────────────────────────
+    router.post('/memory/import', authenticateToken, (req, res) => {
+        const funai = getFunAI(req, res);
+        if (!funai) return;
+
+        const { entries } = req.body;
+        if (!Array.isArray(entries) || entries.length === 0) {
+            return res.status(400).json({ error: 'entries array required' });
+        }
+
+        let imported = 0;
+        let skipped = 0;
+        for (const entry of entries) {
+            if (!entry.content) { skipped++; continue; }
+            try {
+                // Check for duplicates
+                const existing = funai.memory.db.prepare(
+                    'SELECT id FROM funai_memory WHERE content = ? AND type = ? LIMIT 1'
+                ).get(entry.content, entry.type || 'fact');
+                if (existing) { skipped++; continue; }
+
+                funai.memory.add({
+                    type: entry.type || 'fact',
+                    category: entry.category || 'parsed_discord',
+                    question: entry.question || null,
+                    content: entry.content,
+                    source: entry.source || 'import',
+                    confidence: entry.confidence || 1.0,
+                });
+                imported++;
+            } catch (e) {
+                skipped++;
+            }
+        }
+
+        res.json({ imported, skipped, total: entries.length });
+    });
+
     return router;
 }
 
