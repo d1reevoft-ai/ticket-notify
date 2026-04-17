@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ED344E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Stacked tickets -->
-  <path d="M5 7a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2Z" fill="#ED344E" fill-opacity="0.2"/>
-  <path d="M2 11a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V9a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" fill="#0D0E12" />
-  <path d="M10 7v2"/><path d="M10 13v2"/><path d="M10 19v2"/>
-</svg>
