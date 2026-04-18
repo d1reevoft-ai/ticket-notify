@@ -874,9 +874,21 @@ async function main() {
         });
     }
 
-    // 3.5 Set up Relay Bridge (stealth client from laptop)
-    const { setupRelay } = require('./relay');
-    setupRelay(server, botManager);
+    // 3.5 Set up Plugin Bridge (Vencord plugin from main PC)
+    const { setupPluginBridge } = require('./pluginBridge');
+    setupPluginBridge(server, botManager);
+
+    // Plugin status API endpoint
+    app.get('/api/plugin/status', authenticateToken, (req, res) => {
+        const bot = botManager.getBotForUser(req.user.userId);
+        if (!bot) return res.json({ connected: false, mode: 'no_bot' });
+        res.json({
+            connected: !!bot._pluginConnected,
+            connectedAt: bot._pluginConnectedAt || null,
+            lastPong: bot._pluginLastPong || null,
+            mode: bot._pluginConnected ? 'vencord' : 'offline',
+        });
+    });
 
     // 4. Start HTTP server
     const port = process.env.PORT || 3001;
