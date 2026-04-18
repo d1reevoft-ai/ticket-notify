@@ -184,18 +184,31 @@ class Bot {
     // ═══════════════════════════════════════════════════════
 
     async start() {
-        const token = this.getDiscordGatewayToken();
-        if (!token) { this.log('❌ No Discord token configured'); return; }
         if (!this.config.tgToken) { this.log('❌ No Telegram token configured'); return; }
 
+        const pluginMode = process.env.PLUGIN_MODE === '1' || this.config.pluginMode;
+        const token = this.getDiscordGatewayToken();
+
         this.log('═══════════════════════════════════════');
-        this.log(' Telegram Ticket Notifier — Starting');
+        this.log(` Telegram Ticket Notifier — Starting`);
+        this.log(` Mode: ${pluginMode ? '🔌 Plugin (Vencord)' : '🌐 Direct Gateway'}`);
         this.log('═══════════════════════════════════════');
 
         this.initDb();
         this.loadState();
         this.startAutosave();
-        connectGateway(this);
+
+        // In plugin mode: NO Gateway connection — Vencord handles Discord
+        // Bot stays passive until Vencord plugin connects via WebSocket
+        if (pluginMode) {
+            this.log('🔌 Plugin mode — waiting for Vencord plugin to connect');
+            this._relayMode = true; // Prevents any Gateway auto-connect
+        } else if (token) {
+            connectGateway(this);
+        } else {
+            this.log('⚠️ No Discord token — running in Telegram-only mode');
+        }
+
         startPolling(this);
         this.scheduleShiftReminder();
     }
