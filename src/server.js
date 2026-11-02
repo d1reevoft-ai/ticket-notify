@@ -8,11 +8,12 @@
  * Usage: node src/server.js
  */
 
-// Load environment variables from .env file for local development
-try { require('dotenv').config(); } catch (e) { }
-
 const path = require('path');
 const fs = require('fs');
+// Load local secrets without overriding values supplied by the process manager.
+try { require('dotenv').config({ path: path.join(__dirname, '..', '.env.ubuntu') }); } catch (e) { }
+try { require('dotenv').config({ path: path.join(__dirname, '..', '.env') }); } catch (e) { }
+
 const http = require('http');
 const express = require('express');
 const cors = require('cors');

@@ -54,14 +54,19 @@ interface BridgeAction {
 function connectBridge() {
     const settings = Settings.plugins?.TicketNotifier;
     const serverUrl = settings?.serverUrl || "ws://192.168.1.100:3000";
-    const secret = settings?.pluginSecret || "REMOVED_SECRET";
+    const secret = settings?.pluginSecret?.trim() || "";
+
+    if (new TextEncoder().encode(secret).length < 32) {
+        console.warn("[TicketNotifier] Set a private plugin secret (at least 32 characters) in plugin settings.");
+        return;
+    }
 
     if (bridgeReconnectTimer) {
         clearTimeout(bridgeReconnectTimer);
         bridgeReconnectTimer = null;
     }
 
-    const wsUrl = `${serverUrl.replace(/^http/, "ws")}/plugin-bridge?secret=${encodeURIComponent(secret)}`;
+    const wsUrl = `${serverUrl.replace(/^http/, "ws")}/plugin-bridge`;
 
     try {
         bridge = new WebSocket(wsUrl);
@@ -73,7 +78,6 @@ function connectBridge() {
 
     bridge.onopen = () => {
         console.log("[TicketNotifier] ✅ Connected to Ubuntu backend");
-        bridgeConnected = true;
         bridge!.send(JSON.stringify({ type: "auth", secret, mode: "vencord" }));
     };
 
@@ -114,6 +118,7 @@ async function handleBridgeMessage(msg: any) {
     switch (msg.type) {
         case "auth_ok":
             console.log("[TicketNotifier] 🔑 Authenticated with backend");
+            bridgeConnected = true;
             break;
 
         case "config":
@@ -418,14 +423,14 @@ export default definePlugin({
     settings: {
         serverUrl: {
             type: OptionType.STRING,
-            description: "Ubuntu server URL (ws://IP:PORT)",
+            description: "Ubuntu server URL; use wss:// for remote connections",
             default: "ws://192.168.1.100:3000",
             restartNeeded: true,
         },
         pluginSecret: {
             type: OptionType.STRING,
-            description: "Plugin authentication secret",
-            default: "REMOVED_SECRET",
+            description: "Private server secret; must match PLUGIN_SECRET on the backend (at least 32 characters)",
+            default: "",
             restartNeeded: true,
         },
         showToasts: {

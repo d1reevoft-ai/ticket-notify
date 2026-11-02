@@ -3735,6 +3735,7 @@ function cleanupGateway() {
 function startDashboard() {
     const app = express();
     const server = http.createServer(app);
+    const dashboardJwtSecret = config.jwtSecret || process.env.JWT_SECRET || '';
     io = new Server(server, {
         cors: {
             origin: '*',
@@ -3750,8 +3751,8 @@ function startDashboard() {
         const token = req.headers.authorization?.split(' ')[1];
         if (!token) return res.status(401).json({ error: 'Unauthorized: No token provided' });
         try {
-            const secret = config.jwtSecret || 'REMOVED_SECRET';
-            const decoded = jwt.verify(token, secret);
+            if (Buffer.byteLength(dashboardJwtSecret, 'utf8') < 32) return res.status(503).json({ error: 'Dashboard authentication is not configured' });
+            const decoded = jwt.verify(token, dashboardJwtSecret);
             req.user = decoded;
             next();
         } catch (err) {
@@ -3763,8 +3764,8 @@ function startDashboard() {
     app.post('/api/auth', (req, res) => {
         const { password } = req.body;
         if (password === config.dashboardPassword) {
-            const secret = config.jwtSecret || 'REMOVED_SECRET';
-            const token = jwt.sign({ role: 'admin' }, secret, { expiresIn: '7d' });
+            if (Buffer.byteLength(dashboardJwtSecret, 'utf8') < 32) return res.status(503).json({ error: 'Dashboard authentication is not configured' });
+            const token = jwt.sign({ role: 'admin' }, dashboardJwtSecret, { expiresIn: '7d' });
             return res.json({ token });
         }
         return res.status(401).json({ error: 'Invalid password' });
@@ -4085,8 +4086,8 @@ function startDashboard() {
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
         if (!token) return next(new Error('Authentication error'));
         try {
-            const secret = config.jwtSecret || 'REMOVED_SECRET';
-            jwt.verify(token, secret);
+            if (Buffer.byteLength(dashboardJwtSecret, 'utf8') < 32) return next(new Error('Authentication error'));
+            jwt.verify(token, dashboardJwtSecret);
             next();
         } catch (err) {
             next(new Error('Authentication error'));

@@ -10,8 +10,7 @@ module.exports = {
             // ── Plugin Mode (CRITICAL: keeps bot passive, no Discord Gateway) ──
             PLUGIN_MODE: '1',
 
-            // ── Plugin Bridge Secret (must match Vencord plugin settings) ──
-            PLUGIN_SECRET: 'REMOVED_SECRET',
+            // PLUGIN_SECRET and JWT_SECRET load from the private .env.ubuntu file in src/server.js.
 
             // ── Data Directory ──
             DATA_DIR: './data',

@@ -61,7 +61,10 @@ mkdir -p data logs
 
 # ── 8. Create .env file if not exists ──
 if [ ! -f .env.ubuntu ]; then
-    cat > .env.ubuntu << 'EOF'
+    PLUGIN_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+    JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+    umask 077
+    cat > .env.ubuntu << EOF
 # ══════════════════════════════════════════════════
 #  Ubuntu Backend Configuration
 # ══════════════════════════════════════════════════
@@ -74,13 +77,13 @@ PLUGIN_MODE=1
 
 # Secret for Vencord plugin authentication
 # MUST match the secret in Vencord plugin settings
-PLUGIN_SECRET=REMOVED_SECRET
+PLUGIN_SECRET=${PLUGIN_SECRET}
 
 # Data directory
 DATA_DIR=./data
 
-# JWT Secret for dashboard auth (generate your own!)
-JWT_SECRET=REMOVED_SECRET
+# JWT secret for dashboard auth; generated automatically on a fresh install.
+JWT_SECRET=${JWT_SECRET}
 
 # Telegram Bot (works 24/7 on Ubuntu)
 # TG_TOKEN=your-telegram-bot-token
@@ -89,7 +92,8 @@ JWT_SECRET=REMOVED_SECRET
 # AI Providers
 # GEMINI_API_KEYS=key1,key2
 EOF
-    echo -e "${YELLOW}⚠️  Created .env.ubuntu — edit it with your settings!${NC}"
+    chmod 600 .env.ubuntu
+    echo -e "${YELLOW}⚠️  Created .env.ubuntu with private secrets. Copy PLUGIN_SECRET from that file to the Vencord settings on each client; never post it publicly.${NC}"
 else
     echo -e "${GREEN}✅ .env.ubuntu already exists${NC}"
 fi

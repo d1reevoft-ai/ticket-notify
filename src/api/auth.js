@@ -5,7 +5,10 @@ const https = require('https');
 const { OAuth2Client } = require('google-auth-library');
 const { sendOtpEmail } = require('../email');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'REMOVED_SECRET';
+const JWT_SECRET = process.env.JWT_SECRET || '';
+if (Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 bytes');
+}
 
 // Send a Telegram message to a specific chat
 function sendTelegramMessage(tgToken, chatId, text, replyMarkup) {

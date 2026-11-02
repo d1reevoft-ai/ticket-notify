@@ -5,9 +5,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 const WebSocket = require('ws');
+const crypto = require('crypto');
 
 const LOG = '[PluginBridge]';
-const PLUGIN_SECRET = process.env.PLUGIN_SECRET || 'REMOVED_SECRET';
+const PLUGIN_SECRET = process.env.PLUGIN_SECRET || '';
 
 /**
  * Sets up the Plugin Bridge WebSocket server.
@@ -15,6 +16,10 @@ const PLUGIN_SECRET = process.env.PLUGIN_SECRET || 'REMOVED_SECRET';
  * @param {BotManager} botManager
  */
 function setupPluginBridge(httpServer, botManager) {
+    if (Buffer.byteLength(PLUGIN_SECRET, 'utf8') < 32) {
+        throw new Error('PLUGIN_SECRET must be configured with at least 32 bytes before starting the plugin bridge');
+    }
+
     const wss = new WebSocket.Server({ noServer: true });
 
     // Handle HTTP upgrade for /plugin-bridge path
@@ -22,150 +27,146 @@ function setupPluginBridge(httpServer, botManager) {
         const url = new URL(req.url, `http://${req.headers.host}`);
         if (url.pathname !== '/plugin-bridge') return;
 
-        const secret = url.searchParams.get('secret') || '';
-        if (secret !== PLUGIN_SECRET) {
-            console.log(`${LOG} ❌ Plugin auth failed (bad secret)`);
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
-            return;
-        }
-
         wss.handleUpgrade(req, socket, head, (ws) => {
             wss.emit('connection', ws, req);
         });
     });
 
     wss.on('connection', (ws) => {
-        console.log(`${LOG} ✅ Vencord plugin connected`);
-
-        const bot = getFirstBot(botManager);
-        if (!bot) {
-            console.log(`${LOG} ❌ No bot instance found`);
-            ws.close(1008, 'No bot instance');
-            return;
-        }
-
-        // ── Set plugin mode on bot ──
-        bot._pluginWs = ws;
-        bot._pluginConnected = true;
-        bot._pluginConnectedAt = Date.now();
-
-        // Cancel any old relay failover
-        if (bot._relayFailoverTimer) {
-            clearTimeout(bot._relayFailoverTimer);
-            bot._relayFailoverTimer = null;
-        }
-
-        // Disconnect any direct Gateway connection (not needed with plugin)
-        if (bot.ws) {
-            console.log(`${LOG} 🔄 Disconnecting direct Gateway — plugin takes over`);
-            bot._relayMode = true; // Prevents Gateway auto-reconnect
-            try { bot.ws.close(1000); } catch { }
-            const { cleanupGateway } = require('./bot/gateway');
-            cleanupGateway(bot);
-        }
-
-        bot.log('🔗 PluginBridge: Vencord plugin connected — using real client');
-
-        // Send config to plugin
-        sendToPlugin(ws, {
-            type: 'config',
-            data: {
-                guildId: bot.config.guildId || '',
-                ticketsCategoryId: bot.config.ticketsCategoryId || '',
-                ticketPrefix: bot.config.ticketPrefix || 'тикет-от',
-                staffRoleIds: bot.config.staffRoleIds || [],
-                priorityKeywords: bot.config.priorityKeywords || [],
-                autoRepliesEnabled: bot.config.autoRepliesEnabled !== false,
-                autoGreetEnabled: bot.config.autoGreetEnabled || false,
-                autoGreetText: bot.config.autoGreetText || '',
-                autoGreetDelay: bot.config.autoGreetDelay || 3,
-                binds: bot.config.binds || {},
-                autoReplies: bot.config.autoReplies || [],
-                botReplyGuildIds: bot.config.botReplyGuildIds || [],
-                closingPhrase: bot.config.closingPhrase || '',
-                forumMode: bot.config.forumMode || false,
-            }
-        });
-
-        // Pending action callbacks
-        if (!bot._pluginPendingActions) bot._pluginPendingActions = new Map();
-        let _reqCounter = 0;
-
-        // ── Receive events from Vencord plugin ──
-        ws.on('message', (raw) => {
+        const authTimeout = setTimeout(() => ws.close(1008, 'Authentication required'), 5000);
+        ws.once('close', () => clearTimeout(authTimeout));
+        ws.once('message', (raw) => {
             let msg;
-            try { msg = JSON.parse(raw); } catch { return; }
-            handlePluginMessage(bot, ws, msg);
-        });
-
-        // ── Health check ping ──
-        const pingTimer = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+            try { msg = JSON.parse(raw); } catch {
+                clearTimeout(authTimeout);
+                ws.close(1008, 'Invalid authentication');
+                return;
             }
-        }, 30_000);
+            if (msg?.type !== 'auth' || !isSecretMatch(msg.secret, PLUGIN_SECRET)) {
+                clearTimeout(authTimeout);
+                console.log(`${LOG} ❌ Plugin auth failed`);
+                ws.close(1008, 'Authentication failed');
+                return;
+            }
 
-        // ── Plugin disconnected ──
-        ws.on('close', (code) => {
-            console.log(`${LOG} 🔌 Vencord plugin disconnected (${code})`);
-            bot.log(`⚠️ PluginBridge: plugin disconnected (${code})`);
-            clearInterval(pingTimer);
+            clearTimeout(authTimeout);
+            sendToPlugin(ws, { type: 'auth_ok' });
+            activatePluginConnection(ws, botManager);
+        });
+        ws.on('error', (e) => console.log(`${LOG} ❌ Plugin error: ${e.message}`));
+    });
+
+    console.log(`${LOG} ✅ Plugin Bridge WebSocket server ready on /plugin-bridge`);
+}
+
+function isSecretMatch(candidate, expected) {
+    if (typeof candidate !== 'string') return false;
+    const candidateBuffer = Buffer.from(candidate, 'utf8');
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    return candidateBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(candidateBuffer, expectedBuffer);
+}
+
+function activatePluginConnection(ws, botManager) {
+    console.log(`${LOG} ✅ Vencord plugin connected`);
+    const bot = getFirstBot(botManager);
+    if (!bot) {
+        console.log(`${LOG} ❌ No bot instance found`);
+        ws.close(1008, 'No bot instance');
+        return;
+    }
+
+    bot._pluginWs = ws;
+    bot._pluginConnected = true;
+    bot._pluginConnectedAt = Date.now();
+
+    if (bot._relayFailoverTimer) {
+        clearTimeout(bot._relayFailoverTimer);
+        bot._relayFailoverTimer = null;
+    }
+
+    if (bot.ws) {
+        console.log(`${LOG} 🔄 Disconnecting direct Gateway — plugin takes over`);
+        bot._relayMode = true;
+        try { bot.ws.close(1000); } catch { }
+        const { cleanupGateway } = require('./bot/gateway');
+        cleanupGateway(bot);
+    }
+
+    bot.log('🔗 PluginBridge: Vencord plugin connected — using real client');
+    sendToPlugin(ws, {
+        type: 'config',
+        data: {
+            guildId: bot.config.guildId || '',
+            ticketsCategoryId: bot.config.ticketsCategoryId || '',
+            ticketPrefix: bot.config.ticketPrefix || 'тикет-от',
+            staffRoleIds: bot.config.staffRoleIds || [],
+            priorityKeywords: bot.config.priorityKeywords || [],
+            autoRepliesEnabled: bot.config.autoRepliesEnabled !== false,
+            autoGreetEnabled: bot.config.autoGreetEnabled || false,
+            autoGreetText: bot.config.autoGreetText || '',
+            autoGreetDelay: bot.config.autoGreetDelay || 3,
+            binds: bot.config.binds || {},
+            autoReplies: bot.config.autoReplies || [],
+            botReplyGuildIds: bot.config.botReplyGuildIds || [],
+            closingPhrase: bot.config.closingPhrase || '',
+            forumMode: bot.config.forumMode || false,
+        }
+    });
+
+    if (!bot._pluginPendingActions) bot._pluginPendingActions = new Map();
+    let reqCounter = 0;
+    ws.on('message', (raw) => {
+        let msg;
+        try { msg = JSON.parse(raw); } catch { return; }
+        handlePluginMessage(bot, ws, msg);
+    });
+
+    const pingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+    }, 30_000);
+
+    ws.on('close', (code) => {
+        console.log(`${LOG} 🔌 Vencord plugin disconnected (${code})`);
+        bot.log(`⚠️ PluginBridge: plugin disconnected (${code})`);
+        clearInterval(pingTimer);
+        if (bot._pluginWs === ws) {
             bot._pluginWs = null;
             bot._pluginConnected = false;
-
-            // Reject pending actions
             if (bot._pluginPendingActions) {
-                for (const [id, pending] of bot._pluginPendingActions) {
+                for (const pending of bot._pluginPendingActions.values()) {
                     pending.resolve({ ok: false, status: 0, body: 'plugin_disconnected' });
                 }
                 bot._pluginPendingActions.clear();
             }
-
-            // NOTE: We do NOT fall back to direct Gateway anymore — that's the whole point!
-            // Bot stays in passive mode until plugin reconnects.
             bot.emitToDashboard('plugin:status', { connected: false });
-        });
-
-        ws.on('error', (e) => {
-            console.log(`${LOG} ❌ Plugin error: ${e.message}`);
-        });
-
-        // ── Expose command sender to bot ──
-        bot._pluginSendCommand = function (command) {
-            return new Promise((resolve) => {
-                if (!bot._pluginWs || bot._pluginWs.readyState !== WebSocket.OPEN) {
-                    return resolve({ ok: false, status: 0, body: 'plugin_not_connected' });
-                }
-                const reqId = `p_${++_reqCounter}_${Date.now()}`;
-                command.reqId = reqId;
-
-                const timeout = setTimeout(() => {
-                    bot._pluginPendingActions.delete(reqId);
-                    resolve({ ok: false, status: 0, body: 'plugin_timeout' });
-                }, 15_000);
-
-                bot._pluginPendingActions.set(reqId, {
-                    resolve: (result) => {
-                        clearTimeout(timeout);
-                        resolve(result);
-                    }
-                });
-
-                bot._pluginWs.send(JSON.stringify(command));
-            });
-        };
-
-        // Also set as relay sender so existing Bot.js sendDiscordMessage works
-        bot._relaySendCommand = bot._pluginSendCommand;
-        bot._relayMode = true;
-        bot._relayPendingRequests = bot._pluginPendingActions;
-
-        // Notify dashboard
-        bot.emitToDashboard('plugin:status', { connected: true });
+        }
     });
 
-    console.log(`${LOG} ✅ Plugin Bridge WebSocket server ready on /plugin-bridge`);
+    bot._pluginSendCommand = function (command) {
+        return new Promise((resolve) => {
+            if (!bot._pluginWs || bot._pluginWs.readyState !== WebSocket.OPEN) {
+                return resolve({ ok: false, status: 0, body: 'plugin_not_connected' });
+            }
+            const reqId = `p_${++reqCounter}_${Date.now()}`;
+            command.reqId = reqId;
+            const timeout = setTimeout(() => {
+                bot._pluginPendingActions.delete(reqId);
+                resolve({ ok: false, status: 0, body: 'plugin_timeout' });
+            }, 15_000);
+            bot._pluginPendingActions.set(reqId, {
+                resolve: (result) => {
+                    clearTimeout(timeout);
+                    resolve(result);
+                }
+            });
+            bot._pluginWs.send(JSON.stringify(command));
+        });
+    };
+
+    bot._relaySendCommand = bot._pluginSendCommand;
+    bot._relayMode = true;
+    bot._relayPendingRequests = bot._pluginPendingActions;
+    bot.emitToDashboard('plugin:status', { connected: true });
 }
 
 // ── Handle messages from plugin ──────────────────────────────
