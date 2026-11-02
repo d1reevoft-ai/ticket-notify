@@ -7,7 +7,7 @@
     "start": "node bot.js",
     "start:saas": "node src/server.js",
     "build:dashboard": "npm --prefix dashboard run build",
-    "start:saas:REMOVED_PLATFORM_REFERENCE": "npm run build:dashboard && node src/server.js"
+    "start:saas:production": "npm run build:dashboard && node src/server.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

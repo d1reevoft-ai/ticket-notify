@@ -27,7 +27,7 @@ const _profanityCooldown = new Map();
 let _cachedSystemPrompt = null;
 let _promptLoadedAt = 0;
 let _cachedPromptMtimeMs = 0;
-// Resolve persistent data dir (REMOVED_PLATFORM_REFERENCE volume or local)
+// Resolve persistent data dir (mounted volume or local)
 const _dataDir = process.env.DATA_DIR || (fs.existsSync('/data') ? '/data' : path.join(__dirname, '..', '..', 'data'));
 const _systemPromptPath = path.join(__dirname, '..', '..', 'neuro_style_prompt.txt');
 

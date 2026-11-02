@@ -62,7 +62,7 @@ node bot.js
 | `staffRoleIds` | Массив ID ролей саппорта |
 | `ticketPrefix` | Префикс названий тикет-каналов |
 
-### Переменные окружения (для REMOVED_PLATFORM_REFERENCE / Docker / VPS)
+### Переменные окружения (Docker / VPS)
 
 Все параметры можно передать через env-переменные — они перезаписывают `config.json`:
 
@@ -74,7 +74,14 @@ GUILD_ID=...
 TICKETS_CATEGORY_ID=...
 STAFF_ROLE_IDS=id1,id2
 TICKET_PREFIX=тикет-от
+JWT_SECRET=<random value, at least 32 characters>
+PLUGIN_SECRET=<random value, at least 32 characters>
+DASHBOARD_URL=https://your-domain.example
+VITE_API_PROXY_TARGET=http://localhost:3001
 ```
+
+Не добавляйте в Git `config.json`, `.env` или `.env.ubuntu`: в них хранятся приватные токены и пароли.
+`PLUGIN_SECRET` должен совпадать с приватным значением в настройках Vencord-плагина.
 
 ### Необязательные параметры
 

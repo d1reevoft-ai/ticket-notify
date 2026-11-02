@@ -1,22 +1,24 @@
-// Этот скрипт выкачивает спарсенные данные из локальной БД
-// и заливает их на REMOVED_PLATFORM_REFERENCE через API-эндпоинт /api/funai/memory/import
+// Загружает спарсенные данные из локальной БД на сервер через API /api/funai/memory/import.
 //
 // Использование: node upload_knowledge.js
 //
 // Перед запуском убедись что:
-// 1. Бот запущен на REMOVED_PLATFORM_REFERENCE с новым кодом (git push)
-// 2. У тебя есть JWT-токен (логинишься в дашборд)
+// 1. Сервер запущен и доступен по DASHBOARD_URL.
+// 2. Укажи DASH_USER и DASH_PASS для входа в дашборд.
 
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
 // ── Конфигурация ──
-const REMOVED_PLATFORM_REFERENCE = REMOVED_PLATFORM_REFERENCE || 'https://REMOVED_PLATFORM_REFERENCE';
-const DASHBOARD_LOGIN = process.env.DASH_USER || 'admin';
-const DASHBOARD_PASS = process.env.DASH_PASS || 'REMOVED_SECRET';
+const DASHBOARD_URL = (process.env.DASHBOARD_URL || '').replace(/\/+$/, '');
+const DASHBOARD_LOGIN = process.env.DASH_USER || '';
+const DASHBOARD_PASS = process.env.DASH_PASS || '';
 
 async function main() {
+    if (!DASHBOARD_URL || !DASHBOARD_LOGIN || !DASHBOARD_PASS) {
+        throw new Error('Set DASHBOARD_URL, DASH_USER, and DASH_PASS in the private environment before running this script.');
+    }
     // 1. Читаем спарсенные данные из локальной базы
     const dbPath = path.join(__dirname, 'data', 'tickets_1.db');
     if (!fs.existsSync(dbPath)) {
@@ -30,11 +32,11 @@ async function main() {
         console.log('⚠️ Нет спарсенных данных для загрузки. Сначала запусти scrape_discord.js');
         process.exit(0);
     }
-    console.log(`📦 Найдено ${entries.length} записей для загрузки на REMOVED_PLATFORM_REFERENCE`);
+    console.log(`📦 Найдено ${entries.length} записей для загрузки на сервер`);
 
     // 2. Логинимся в дашборд, получаем JWT-токен
-    console.log(`🔐 Логинимся в ${REMOVED_PLATFORM_REFERENCE}...`);
-    const loginRes = await fetch(`${REMOVED_PLATFORM_REFERENCE}/api/auth/login`, {
+    console.log(`🔐 Логинимся в ${DASHBOARD_URL}...`);
+    const loginRes = await fetch(`${DASHBOARD_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ login: DASHBOARD_LOGIN, password: DASHBOARD_PASS })
@@ -58,7 +60,7 @@ async function main() {
         const batch = entries.slice(i, i + BATCH_SIZE);
         console.log(`⏳ Загружаю батч ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} записей)...`);
 
-        const importRes = await fetch(`${REMOVED_PLATFORM_REFERENCE}/api/funai/memory/import`, {
+        const importRes = await fetch(`${DASHBOARD_URL}/api/funai/memory/import`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -84,9 +86,9 @@ async function main() {
 
     console.log('═══════════════════════════════════════════════════');
     console.log(`🎉 Загрузка завершена!`);
-    console.log(`🧠 Импортировано на REMOVED_PLATFORM_REFERENCE: ${totalImported}`);
+    console.log(`🧠 Импортировано на сервер: ${totalImported}`);
     console.log(`⏭️  Пропущено дублей: ${totalSkipped}`);
-    console.log('💡 Бот на REMOVED_PLATFORM_REFERENCE автоматически создаст векторы для новых записей.');
+    console.log('💡 Сервер обработает новые записи при следующем запуске индексации.');
 }
 
 main().catch(e => { console.error('❌', e.message); process.exit(1); });

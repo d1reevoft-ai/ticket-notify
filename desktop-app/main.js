@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 
-const DASHBOARD_URL = 'https://REMOVED_PLATFORM_REFERENCE';
+const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3001';
 
 let mainWindow = null;
 let tray = null;

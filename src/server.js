@@ -31,12 +31,12 @@ const { createFunAiRoutes } = require('./api/funai');
 const FunAI = require('./bot/funai');
 const { invalidateSystemPromptCache } = require('./bot/gateway');
 
-// Prefer REMOVED_PLATFORM_REFERENCE persistent volume (/data), then env var, then local ./data
+// Use configured storage, then a mounted /data volume, then local ./data.
 const DATA_DIR = process.env.DATA_DIR || (require('fs').existsSync('/data') ? '/data' : path.join(__dirname, '..', 'data'));
 try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) { }
 
 const LOG = '[Server]';
-const APP_BUILD = String(REMOVED_PLATFORM_REFERENCE || REMOVED_PLATFORM_REFERENCE || process.env.SOURCE_COMMIT || 'local');
+const APP_BUILD = String(process.env.SOURCE_COMMIT || 'local');
 const INDEX_NO_CACHE = 'no-store, no-cache, must-revalidate';
 const AUTH_ME_NO_CACHE = 'no-store';
 const SYSTEM_PROMPT_FILE = path.join(__dirname, '..', 'neuro_style_prompt.txt');

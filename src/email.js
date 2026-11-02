@@ -1,8 +1,7 @@
 const nodemailer = require('nodemailer');
 const dns = require('dns');
 
-// Force Node.js to use IPv4 first. REMOVED_PLATFORM_REFERENCE's Docker containers often don't have IPv6 routing configured,
-// causing Node 18+ to throw ENETUNREACH when trying to connect to smtp.gmail.com via IPv6.
+// Prefer IPv4 for hosts where IPv6 routing to SMTP servers is unavailable.
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
 }

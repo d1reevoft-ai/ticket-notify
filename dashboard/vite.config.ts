@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
+const apiTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001';
+
 export default defineConfig({
     plugins: [
         react(),
@@ -46,11 +48,11 @@ export default defineConfig({
         port: 5173,
         proxy: {
             '/api': {
-                target: 'https://REMOVED_PLATFORM_REFERENCE',
+                target: apiTarget,
                 changeOrigin: true,
             },
             '/socket.io': {
-                target: 'https://REMOVED_PLATFORM_REFERENCE',
+                target: apiTarget,
                 ws: true,
             },
         }

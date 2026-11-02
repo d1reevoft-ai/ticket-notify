@@ -73,11 +73,9 @@ async function handleMessage(bot, msg) {
                 break;
 
             case '/web': case '/dashboard': case '/app': {
-                const domain = process.env.DASHBOARD_URL
-                    || (REMOVED_PLATFORM_REFERENCE ? `https://${REMOVED_PLATFORM_REFERENCE}` : '')
-                    || (REMOVED_PLATFORM_REFERENCE ? `https://${REMOVED_PLATFORM_REFERENCE}` : '');
+                const domain = process.env.DASHBOARD_URL || '';
                 if (!domain) {
-                    await bot.tgSendMessage(chatId, '❌ Dashboard URL не настроен.\n\nУстанови переменную <code>DASHBOARD_URL</code> в REMOVED_PLATFORM_REFERENCE (например <code>https://REMOVED_PLATFORM_REFERENCE</code>).');
+                    await bot.tgSendMessage(chatId, '❌ Dashboard URL не настроен.\n\nУстанови переменную <code>DASHBOARD_URL</code> в конфигурации сервера.');
                     break;
                 }
                 const url = domain.replace(/\/+$/, '');
